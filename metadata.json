@@ -1,0 +1,6 @@
+{
+  "name": "AlgoArena",
+  "description": "A real-time competitive coding platform where developers duel against each other in real-time, powered by Gemini API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
