@@ -416,6 +416,8 @@ interface MatchRecord {
   playback?: any;
 }
 
+type FriendRequestStatus = 'none' | 'pending' | 'incoming' | 'friends' | 'self';
+
 interface UserProfileData {
   uid?: string;
   name?: string;
@@ -424,6 +426,9 @@ interface UserProfileData {
   nationality?: string;
   region?: string;
   photoURL?: string;
+  friends: string[];
+  incomingFriendRequests: string[];
+  outgoingFriendRequests: string[];
   elo: number;
   rankTitle: string;
   peakElo: number;
@@ -490,6 +495,9 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
     const initialProfile: UserProfileData = {
       username,
       name: username,
+      friends: [],
+      incomingFriendRequests: [],
+      outgoingFriendRequests: [],
       elo: 1200,
       rankTitle: 'SILVER I',
       peakElo: 1200,
@@ -664,11 +672,12 @@ async function startServer() {
   // Official Ranked Leaderboard Endpoint
   app.get('/api/leaderboard', (req, res) => {
     try {
-      const { tier, search, currentUser, limit } = req.query as {
+      const { tier, search, currentUser, limit, scope } = req.query as {
         tier?: string;
         search?: string;
         currentUser?: string;
         limit?: string;
+        scope?: 'global' | 'friends';
       };
 
       // Ensure currentUser profile exists in memory
@@ -677,9 +686,17 @@ async function startServer() {
       }
 
       const currentUserNameLower = currentUser?.trim().toLowerCase();
+      const minimumGames = 5;
+      const currentProfile = currentUserNameLower ? userProfiles.get(currentUserNameLower) : undefined;
+      const currentUserGames = currentProfile?.totalDuels || 0;
+      const isFriendsScope = scope === 'friends';
+      const friendNames = new Set((currentProfile?.friends || []).map(name => name.toLowerCase()));
 
       // Transform user profiles into structured leaderboard entries
-      const allEntries = Array.from(userProfiles.values()).map(p => {
+      const allEntries = Array.from(userProfiles.values())
+        .filter(p => (p.totalDuels || 0) >= minimumGames)
+        .filter(p => !isFriendsScope || p.username.toLowerCase() === currentUserNameLower || friendNames.has(p.username.toLowerCase()))
+        .map(p => {
         const total = p.totalDuels || (p.wins + p.losses);
         const winRate = total > 0 ? Math.round((p.wins / total) * 100) : 0;
         const recentMatch = p.matches && p.matches[0];
@@ -712,7 +729,7 @@ async function startServer() {
           status,
           isCurrentUser: isCurrent,
         };
-      });
+        });
 
       // Sort by ELO descending, secondary sort by winRate descending
       allEntries.sort((a, b) => {
@@ -763,6 +780,11 @@ async function startServer() {
         leaderboard: filtered,
         meta: {
           totalRanked: allEntries.length,
+          scope: isFriendsScope ? 'friends' : 'global',
+          minimumGames,
+          currentUserGames,
+          isEligible: currentUserGames >= minimumGames,
+          friendCount: currentProfile?.friends?.length || 0,
           season: 'SEASON 04: NEON MATRIX',
           seasonEndsIn: '14D 06H 18M',
           currentUserStats,
@@ -780,6 +802,72 @@ async function startServer() {
       console.error('Leaderboard error:', err);
       res.status(500).json({ error: 'Failed to fetch leaderboard standings' });
     }
+  });
+
+  // Friend graph endpoints. This prototype uses usernames as the account key.
+  app.get('/api/friends', (req, res) => {
+    const username = String(req.query.username || '').trim();
+    const target = username ? getOrCreateUserProfile(username) : null;
+    if (!target) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    const requesterName = String(req.query.viewer || '').trim().toLowerCase();
+    const requester = requesterName ? getOrCreateUserProfile(requesterName) : null;
+    const targetName = target.username.toLowerCase();
+    let status: FriendRequestStatus = 'none';
+    if (requesterName === targetName) status = 'self';
+    else if (requester?.friends?.some(name => name.toLowerCase() === targetName)) status = 'friends';
+    else if (requester?.outgoingFriendRequests?.some(name => name.toLowerCase() === targetName)) status = 'pending';
+    else if (requester?.incomingFriendRequests?.some(name => name.toLowerCase() === targetName)) status = 'incoming';
+
+    res.json({
+      username: target.username,
+      friends: target.friends || [],
+      incomingFriendRequests: target.incomingFriendRequests || [],
+      outgoingFriendRequests: target.outgoingFriendRequests || [],
+      status,
+    });
+  });
+
+  app.post('/api/friends/request', (req, res) => {
+    const fromName = String(req.body?.from || '').trim();
+    const toName = String(req.body?.to || '').trim();
+    if (!fromName || !toName) return res.status(400).json({ error: 'Both usernames are required' });
+
+    const from = getOrCreateUserProfile(fromName);
+    const to = getOrCreateUserProfile(toName);
+    const fromKey = from.username.toLowerCase();
+    const toKey = to.username.toLowerCase();
+    if (fromKey === toKey) return res.status(400).json({ error: 'You cannot add yourself' });
+    if (from.friends.some(name => name.toLowerCase() === toKey)) return res.json({ status: 'friends' });
+    if (!from.outgoingFriendRequests.some(name => name.toLowerCase() === toKey)) {
+      from.outgoingFriendRequests.push(to.username);
+    }
+    if (!to.incomingFriendRequests.some(name => name.toLowerCase() === fromKey)) {
+      to.incomingFriendRequests.push(from.username);
+    }
+    res.json({ status: 'pending' });
+  });
+
+  app.post('/api/friends/respond', (req, res) => {
+    const username = String(req.body?.username || '').trim();
+    const requesterName = String(req.body?.requester || '').trim();
+    const accept = req.body?.accept === true;
+    if (!username || !requesterName) return res.status(400).json({ error: 'Both usernames are required' });
+
+    const recipient = getOrCreateUserProfile(username);
+    const requester = getOrCreateUserProfile(requesterName);
+    const recipientKey = recipient.username.toLowerCase();
+    const requesterKey = requester.username.toLowerCase();
+    recipient.incomingFriendRequests = recipient.incomingFriendRequests.filter(name => name.toLowerCase() !== requesterKey);
+    requester.outgoingFriendRequests = requester.outgoingFriendRequests.filter(name => name.toLowerCase() !== recipientKey);
+
+    if (accept) {
+      if (!recipient.friends.some(name => name.toLowerCase() === requesterKey)) recipient.friends.push(requester.username);
+      if (!requester.friends.some(name => name.toLowerCase() === recipientKey)) requester.friends.push(recipient.username);
+    }
+    res.json({ status: accept ? 'friends' : 'none' });
   });
 
   // User Profile / Stats Endpoint

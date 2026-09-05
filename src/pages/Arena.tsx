@@ -8,6 +8,7 @@ import { Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, Spar
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
+import { FriendActions } from '../components/FriendActions';
 
 const STARTER_TEMPLATES: Record<string, string> = {
   javascript: `// AlgoArena JavaScript Solution
@@ -351,6 +352,9 @@ export function Arena() {
             )}>
               {opponent?.name === 'AlgoArena Bot' ? <Bot className="w-4 h-4 text-[#00FF00]" /> : opponent ? opponent.name[0] : '?'}
             </div>
+            {opponent && !opponent.isAi && (
+              <FriendActions username={opponent.name} compact showProfileLink />
+            )}
           </div>
 
           {/* Ready / Status Button */}
@@ -719,6 +723,11 @@ export function Arena() {
                   <p className="text-zinc-400 font-mono text-sm mb-6 uppercase tracking-wider">
                     {room.winner === socket.id ? 'All test cases verified. ELO +25 Points.' : 'Opponent completed solution first.'}
                   </p>
+                  {opponent && !opponent.isAi && (
+                    <div className="mb-5">
+                      <FriendActions username={opponent.name} showProfileLink />
+                    </div>
+                  )}
                   <button 
                     onClick={() => navigate('/')} 
                     className="px-8 py-3 bg-[#00FF00] text-black font-black uppercase text-xs tracking-widest hover:bg-[#00CC00] transition-colors shadow-[0_0_15px_rgba(0,255,0,0.3)]"

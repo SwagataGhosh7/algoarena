@@ -123,6 +123,9 @@ export interface UserProfileData {
   nationality?: string;
   region?: string;
   photoURL?: string;
+  friends?: string[];
+  incomingFriendRequests?: string[];
+  outgoingFriendRequests?: string[];
   elo: number;
   rankTitle: string;
   peakElo: number;
@@ -166,6 +169,11 @@ export interface LeaderboardResponse {
   leaderboard: LeaderboardUser[];
   meta: {
     totalRanked: number;
+    scope?: 'global' | 'friends';
+    minimumGames?: number;
+    currentUserGames?: number;
+    isEligible?: boolean;
+    friendCount?: number;
     season: string;
     seasonEndsIn: string;
     currentUserStats?: LeaderboardUser;

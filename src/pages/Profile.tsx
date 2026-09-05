@@ -27,6 +27,7 @@ import {
 import { CompetencyRadar } from '../components/CompetencyRadar';
 import { MatchHistory } from '../components/MatchHistory';
 import { CodePlayback } from '../components/CodePlayback';
+import { FriendActions } from '../components/FriendActions';
 import { useStore } from '../store';
 import { UserProfileData, MatchRecord } from '../types';
 
@@ -214,6 +215,10 @@ export function Profile() {
               <Edit3 className="w-3.5 h-3.5 text-[#00FF00]" />
               <span>EDIT PROFILE</span>
             </button>
+          )}
+
+          {!isSelf && (
+            <FriendActions username={profile.username} />
           )}
 
           <button

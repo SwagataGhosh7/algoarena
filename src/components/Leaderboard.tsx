@@ -31,7 +31,7 @@ interface LeaderboardProps {
 
 export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
   const navigate = useNavigate();
-  const { currentUser } = useStore();
+  const { currentUser, accountProfile } = useStore();
 
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
   const [meta, setMeta] = useState<LeaderboardResponse['meta'] | null>(null);
@@ -40,15 +40,17 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [livePulse, setLivePulse] = useState<boolean>(false);
+  const [scope, setScope] = useState<'global' | 'friends'>('global');
 
   const fetchLeaderboard = useCallback(async (showLoadingSpinner = false) => {
     if (showLoadingSpinner) setIsLoading(true);
     setIsRefreshing(true);
     try {
       const params = new URLSearchParams();
+      params.set('scope', scope);
       if (selectedTier !== 'all') params.set('tier', selectedTier);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
-      if (currentUser?.name) params.set('currentUser', currentUser.name);
+      if (accountProfile?.username || currentUser?.name) params.set('currentUser', accountProfile?.username || currentUser.name);
 
       const res = await fetch(`/api/leaderboard?${params.toString()}`);
       if (res.ok) {
@@ -64,7 +66,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [selectedTier, searchQuery, currentUser?.name]);
+  }, [selectedTier, searchQuery, scope, accountProfile?.username, currentUser?.name]);
 
   // Initial fetch and dependency trigger
   useEffect(() => {
@@ -179,11 +181,25 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white flex items-center gap-3">
             <Trophy className="w-7 h-7 text-[#00FF00]" />
-            GLOBAL LEADERBOARD
+            {scope === 'global' ? 'GLOBAL LEADERBOARD' : 'FRIENDS LEADERBOARD'}
           </h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center border border-white/10 bg-[#0c0c0c] p-0.5 font-mono">
+            <button
+              onClick={() => setScope('global')}
+              className={clsx('px-2.5 py-1.5 text-[10px] font-bold uppercase transition-colors', scope === 'global' ? 'bg-[#00FF00] text-black' : 'text-zinc-400 hover:text-white')}
+            >
+              GLOBAL
+            </button>
+            <button
+              onClick={() => setScope('friends')}
+              className={clsx('px-2.5 py-1.5 text-[10px] font-bold uppercase transition-colors', scope === 'friends' ? 'bg-[#00FF00] text-black' : 'text-zinc-400 hover:text-white')}
+            >
+              FRIENDS
+            </button>
+          </div>
           {/* Real-time Indicator pill */}
           <div className="flex items-center gap-2 bg-[#0c0c0c] border border-white/10 px-3 py-1.5 font-mono text-[10px] text-zinc-400 uppercase">
             <Radio className="w-3.5 h-3.5 text-[#00FF00] animate-pulse" />
@@ -211,6 +227,19 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
           )}
         </div>
       </div>
+
+      {meta && !meta.isEligible && (
+        <div className="mb-6 flex items-center gap-3 border border-[#F27D26]/50 bg-[#F27D26]/10 px-4 py-3 font-mono text-xs text-[#F27D26]">
+          <ShieldAlert className="w-4 h-4 shrink-0" />
+          <span>RANKED ACCESS LOCKED: COMPLETE {Math.max(0, (meta.minimumGames || 5) - (meta.currentUserGames || 0))} MORE GAMES TO JOIN THE {scope === 'global' ? 'GLOBAL' : 'FRIENDS'} LEADERBOARD. ({meta.currentUserGames || 0}/{meta.minimumGames || 5})</span>
+        </div>
+      )}
+
+      {scope === 'friends' && meta?.isEligible && (meta.friendCount || 0) === 0 && (
+        <div className="mb-6 border border-[#00FF00]/30 bg-[#00FF00]/5 px-4 py-3 font-mono text-xs text-zinc-300">
+          Add duelists from their profile or during a match to populate your friends leaderboard.
+        </div>
+      )}
 
       {/* Top 3 Podium Cards */}
       {selectedTier === 'all' && !searchQuery.trim() && topThree.length === 3 && (
