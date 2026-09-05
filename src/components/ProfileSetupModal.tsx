@@ -49,13 +49,6 @@ const REGIONS = [
   { id: 'Oceania', label: 'Oceania' },
 ];
 
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80',
-];
-
 export function ProfileSetupModal() {
   const { 
     isProfileSetupOpen, 
@@ -205,9 +198,6 @@ export function ProfileSetupModal() {
               <label className="text-[10px] font-mono uppercase text-zinc-300 font-bold flex items-center gap-1.5">
                 <Camera className="w-3.5 h-3.5 text-[#00FF00]" />
                 Profile Picture
-                <span className="text-zinc-500 font-normal ml-1">
-                  (Optional, can be added or changed later in profile dashboard)
-                </span>
               </label>
             </div>
 
@@ -253,22 +243,6 @@ export function ProfileSetupModal() {
                   )}
                 </div>
 
-                {/* Preset Avatars */}
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="text-[9px] font-mono text-zinc-500 uppercase">Presets:</span>
-                  {PRESET_AVATARS.map((url, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => { setPreviewURL(url); setPhotoURL(url); }}
-                      className={`w-6 h-6 border overflow-hidden transition-all ${
-                        previewURL === url ? 'border-[#00FF00] scale-110' : 'border-white/20 opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <img src={url} alt="Preset" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           </div>
