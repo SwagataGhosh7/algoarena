@@ -49,6 +49,20 @@ export interface EvaluationResult {
     expected: string;
     actual: string;
   }[];
+  review?: CodeReviewData;
+}
+
+export interface CodeReviewData {
+  expectedSolution: string;
+  summary: string;
+  improvementTips: string[];
+  codingAdvice: string[];
+  lineAnalysis: {
+    lineNumber: number;
+    submitted: string;
+    issue: string;
+    expected: string;
+  }[];
 }
 
 export interface CompetencyTopic {
@@ -113,6 +127,7 @@ export interface MatchRecord {
   date: string;
   timestamp: string;
   playback?: CodePlaybackData;
+  review?: CodeReviewData;
 }
 
 export interface UserProfileData {

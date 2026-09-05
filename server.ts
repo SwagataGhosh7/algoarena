@@ -274,6 +274,72 @@ Include a clean problem title, clear Markdown description with input/output form
 }
 
 // Fallback Code Evaluator if Gemini models are facing 503 high demand
+function getFallbackSolution(language: string, problem: any): string {
+  const title = String(problem?.title || '').toLowerCase();
+  const normalizedLanguage = language.toLowerCase();
+  const isPython = normalizedLanguage === 'python';
+  const isC = normalizedLanguage === 'c';
+  const isCpp = normalizedLanguage === 'cpp';
+  const isJava = normalizedLanguage === 'java';
+  const isTypeScript = normalizedLanguage === 'typescript';
+  if (title.includes('island') || title.includes('matrix')) {
+    if (isPython) return `def solution(grid):\n    rows, cols = len(grid), len(grid[0])\n    count = 0\n    for row in range(rows):\n        for col in range(cols):\n            if grid[row][col] == "1":\n                count += 1\n                stack = [(row, col)]\n                grid[row][col] = "0"\n                while stack:\n                    r, c = stack.pop()\n                    for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):\n                        nr, nc = r + dr, c + dc\n                        if 0 <= nr < rows and 0 <= nc < cols and grid[nr][nc] == "1":\n                            grid[nr][nc] = "0"\n                            stack.append((nr, nc))\n    return count`;
+    if (isJava) return `static int solution(char[][] grid) {\n  int count = 0;\n  for (int r = 0; r < grid.length; r++) {\n    for (int c = 0; c < grid[0].length; c++) {\n      if (grid[r][c] == '1') { count++; flood(grid, r, c); }\n    }\n  }\n  return count;\n}\nstatic void flood(char[][] grid, int r, int c) {\n  if (r < 0 || c < 0 || r >= grid.length || c >= grid[0].length || grid[r][c] != '1') return;\n  grid[r][c] = '0';\n  flood(grid, r + 1, c); flood(grid, r - 1, c); flood(grid, r, c + 1); flood(grid, r, c - 1);\n}`;
+    if (isC || isCpp) return `int solution(char grid[][300], int rows, int cols) {\n  int count = 0;\n  for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) {\n    if (grid[r][c] == '1') {\n      count++;\n      flood(grid, rows, cols, r, c);\n    }\n  }\n  return count;\n}`;
+    return `${isTypeScript ? 'function solution(grid: string[][]): number' : 'function solution(grid)'} {\n  let count = 0;\n  const visit = (r${isTypeScript ? ': number' : ''}, c${isTypeScript ? ': number' : ''}) => {\n    if (r < 0 || c < 0 || r >= grid.length || c >= grid[0].length || grid[r][c] !== '1') return;\n    grid[r][c] = '0';\n    visit(r + 1, c); visit(r - 1, c); visit(r, c + 1); visit(r, c - 1);\n  };\n  for (let r = 0; r < grid.length; r++) for (let c = 0; c < grid[0].length; c++) {\n    if (grid[r][c] === '1') { count++; visit(r, c); }\n  }\n  return count;\n}`;
+  }
+  if (title.includes('adjacent') || title.includes('energy')) {
+    if (isPython) return `def solution(values):\n    skip = take = 0\n    for value in values:\n        skip, take = max(skip, take), skip + value\n    return max(skip, take)`;
+    if (isJava) return `static int solution(int[] values) {\n  int skip = 0, take = 0;\n  for (int value : values) {\n    int nextSkip = Math.max(skip, take);\n    take = skip + value;\n    skip = nextSkip;\n  }\n  return Math.max(skip, take);\n}`;
+    if (isC || isCpp) return `int solution(int values[], int length) {\n  int skip = 0, take = 0;\n  for (int i = 0; i < length; i++) {\n    int nextSkip = skip > take ? skip : take;\n    take = skip + values[i];\n    skip = nextSkip;\n  }\n  return skip > take ? skip : take;\n}`;
+    return `${isTypeScript ? 'function solution(values: number[]): number' : 'function solution(values)'} {\n  let skip = 0;\n  let take = 0;\n  for (const value of values) {\n    [skip, take] = [Math.max(skip, take), skip + value];\n  }\n  return Math.max(skip, take);\n}`;
+  }
+  if (title.includes('distinct') || title.includes('window')) {
+    if (isPython) return `def solution(values):\n    last_seen = {}\n    left = best = 0\n    for right, value in enumerate(values):\n        if value in last_seen and last_seen[value] >= left:\n            left = last_seen[value] + 1\n        last_seen[value] = right\n        best = max(best, right - left + 1)\n    return best`;
+    if (isJava) return `static int solution(int[] values) {\n  Map<Integer, Integer> lastSeen = new HashMap<>();\n  int left = 0, best = 0;\n  for (int right = 0; right < values.length; right++) {\n    if (lastSeen.containsKey(values[right])) left = Math.max(left, lastSeen.get(values[right]) + 1);\n    lastSeen.put(values[right], right);\n    best = Math.max(best, right - left + 1);\n  }\n  return best;\n}`;
+    if (isC || isCpp) return `int solution(int values[], int length) {\n  int lastSeen[100000] = {0};\n  int left = 0, best = 0;\n  for (int right = 0; right < length; right++) {\n    int value = values[right];\n    if (lastSeen[value] > left) left = lastSeen[value];\n    lastSeen[value] = right + 1;\n    int width = right - left + 1;\n    if (width > best) best = width;\n  }\n  return best;\n}`;
+    return `${isTypeScript ? 'function solution(values: number[]): number' : 'function solution(values)'} {\n  const lastSeen = new Map();\n  let left = 0;\n  let best = 0;\n  for (let right = 0; right < values.length; right++) {\n    if (lastSeen.has(values[right])) left = Math.max(left, lastSeen.get(values[right]) + 1);\n    lastSeen.set(values[right], right);\n    best = Math.max(best, right - left + 1);\n  }\n  return best;\n}`;
+  }
+  if (title.includes('topological') || title.includes('task graph') || title.includes('course')) {
+    if (isPython) return `def solution(num_tasks, prerequisites):\n    graph = [[] for _ in range(num_tasks)]\n    indegree = [0] * num_tasks\n    for after, before in prerequisites:\n        graph[before].append(after)\n        indegree[after] += 1\n    queue = [i for i in range(num_tasks) if indegree[i] == 0]\n    seen = 0\n    for node in queue:\n        seen += 1\n        for nxt in graph[node]:\n            indegree[nxt] -= 1\n            if indegree[nxt] == 0: queue.append(nxt)\n    return seen == num_tasks`;
+    if (isJava) return `static boolean solution(int n, int[][] prerequisites) {\n  List<Integer>[] graph = new ArrayList[n];\n  for (int i = 0; i < n; i++) graph[i] = new ArrayList<>();\n  int[] indegree = new int[n];\n  for (int[] edge : prerequisites) { graph[edge[1]].add(edge[0]); indegree[edge[0]]++; }\n  Queue<Integer> queue = new ArrayDeque<>();\n  for (int i = 0; i < n; i++) if (indegree[i] == 0) queue.add(i);\n  int seen = 0;\n  while (!queue.isEmpty()) { int node = queue.remove(); seen++; for (int next : graph[node]) if (--indegree[next] == 0) queue.add(next); }\n  return seen == n;\n}`;
+    if (isC || isCpp) return `bool solution(int n, int prerequisites[][2], int edges) {\n  int indegree[1000] = {0};\n  int graph[1000][1000] = {0};\n  for (int i = 0; i < edges; i++) {\n    int after = prerequisites[i][0], before = prerequisites[i][1];\n    graph[before][after] = 1;\n    indegree[after]++;\n  }\n  int queue[1000], head = 0, tail = 0, seen = 0;\n  for (int i = 0; i < n; i++) if (indegree[i] == 0) queue[tail++] = i;\n  while (head < tail) {\n    int node = queue[head++];\n    seen++;\n    for (int next = 0; next < n; next++) if (graph[node][next] && --indegree[next] == 0) queue[tail++] = next;\n  }\n  return seen == n;\n}`;
+    return `${isTypeScript ? 'function solution(numTasks: number, prerequisites: number[][]): boolean' : 'function solution(numTasks, prerequisites)'} {\n  const graph = Array.from({ length: numTasks }, () => []);\n  const indegree = Array(numTasks).fill(0);\n  for (const [after, before] of prerequisites) { graph[before].push(after); indegree[after]++; }\n  const queue = indegree.map((degree, index) => degree === 0 ? index : -1).filter(index => index >= 0);\n  let seen = 0;\n  for (const node of queue) { seen++; for (const next of graph[node]) if (--indegree[next] === 0) queue.push(next); }\n  return seen === numTasks;\n}`;
+  }
+  if (isPython) return `def solution(data):\n    # Derive the required state from the constraints\n    result = compute_result(data)\n    return result`;
+  if (isJava) return `static int solution(int[] data) {\n  // Derive the required state from the constraints\n  return computeResult(data);\n}`;
+  if (isC || isCpp) return `int solution(int data[], int length) {\n  // Derive the required state from the constraints\n  return computeResult(data, length);\n}`;
+  return `${isTypeScript ? 'function solution(data: unknown): unknown' : 'function solution(data)'} {\n  // Derive the required state from the constraints\n  const result = computeResult(data);\n  return result;\n}`;
+}
+
+function buildFallbackReview(code: string, language: string, problem: any, feedback: string) {
+  const expectedSolution = getFallbackSolution(language, problem);
+  const submittedLines = code.split('\n');
+  const expectedLines = expectedSolution.split('\n');
+  const lineAnalysis = submittedLines.map((submitted, index) => ({
+    lineNumber: index + 1,
+    submitted,
+    expected: expectedLines[index] || '(no corresponding line)',
+    issue: submitted.trim() === (expectedLines[index] || '').trim()
+      ? 'Matches the reference structure.'
+      : 'Review this line against the reference logic; it may be missing state updates, boundary handling, or the required return value.',
+  }));
+  return {
+    expectedSolution,
+    summary: feedback,
+    improvementTips: [
+      'Compare each state update with the reference recurrence or traversal.',
+      'Test empty input, one-element input, repeated values, and boundary indices.',
+      'Prefer a single-pass O(n) approach when the constraints allow it.',
+    ],
+    codingAdvice: [
+      'Use the playback WPM, CPM, and active-line timeline to slow down around complex edits.',
+      'Run tests after each major state change instead of waiting for the final submission.',
+    ],
+    lineAnalysis,
+  };
+}
+
 function fallbackEvaluate(code: string, language: string, problem: any) {
   const tests: any[] = [];
   const examples = problem?.examples || [];
@@ -311,12 +377,14 @@ function fallbackEvaluate(code: string, language: string, problem: any) {
   }
 
   const allPassed = tests.length > 0 && tests.every((t) => t.passed);
+  const feedback = allPassed
+      ? `All test cases passed successfully in ${language.toUpperCase()}. Optimal time and space complexity achieved.`
+      : `Code in ${language.toUpperCase()} is incomplete or missing necessary logic/return statements.`;
   return {
     allPassed,
-    feedback: allPassed
-      ? `All test cases passed successfully in ${language.toUpperCase()}. Optimal time and space complexity achieved.`
-      : `Code in ${language.toUpperCase()} is incomplete or missing necessary logic/return statements.`,
+    feedback,
     testResults: tests,
+    review: buildFallbackReview(code, language, problem, feedback),
   };
 }
 
@@ -340,6 +408,8 @@ Instructions:
 2. For each test case (examples and hidden), verify if the output matches expected.
 3. If code has syntax errors, runtime errors, or incorrect logic, mark failed and provide realistic actual output.
 4. Give constructive compiler/evaluator feedback.
+5. Provide a concise reference solution and explain each submitted line that is incorrect, risky, or missing. For correct lines, say why they are correct.
+6. Include 2-4 concrete improvementTips and 2-4 codingAdvice items covering correctness, complexity, debugging, and the typing/playback metrics.
 Return ONLY JSON.`;
 
   try {
@@ -364,13 +434,36 @@ Return ONLY JSON.`;
               required: ['passed', 'input', 'expected', 'actual'],
             },
           },
+          review: {
+            type: Type.OBJECT,
+            properties: {
+              expectedSolution: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              improvementTips: { type: Type.ARRAY, items: { type: Type.STRING } },
+              codingAdvice: { type: Type.ARRAY, items: { type: Type.STRING } },
+              lineAnalysis: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    lineNumber: { type: Type.INTEGER },
+                    submitted: { type: Type.STRING },
+                    issue: { type: Type.STRING },
+                    expected: { type: Type.STRING },
+                  },
+                  required: ['lineNumber', 'submitted', 'issue', 'expected'],
+                },
+              },
+            },
+            required: ['expectedSolution', 'summary', 'improvementTips', 'codingAdvice', 'lineAnalysis'],
+          },
         },
-        required: ['allPassed', 'feedback', 'testResults'],
+        required: ['allPassed', 'feedback', 'testResults', 'review'],
       },
     });
 
     const evaluation = JSON.parse(text || '{}');
-    if (typeof evaluation.allPassed === 'boolean' && Array.isArray(evaluation.testResults)) {
+    if (typeof evaluation.allPassed === 'boolean' && Array.isArray(evaluation.testResults) && evaluation.review) {
       return evaluation;
     }
   } catch (error) {
@@ -414,6 +507,7 @@ interface MatchRecord {
   date: string;
   timestamp: string;
   playback?: any;
+  review?: any;
 }
 
 type FriendRequestStatus = 'none' | 'pending' | 'incoming' | 'friends' | 'self';
@@ -468,6 +562,12 @@ function calculateRank(elo: number): string {
   if (elo >= 1400) return 'GOLD II';
   if (elo >= 1200) return 'SILVER I';
   return 'BRONZE I';
+}
+
+function parseDurationSeconds(duration: string): number {
+  const minutes = duration.match(/(\d+)m/)?.[1] || '0';
+  const seconds = duration.match(/(\d+)s/)?.[1] || '0';
+  return Number(minutes) * 60 + Number(seconds);
 }
 
 function getInitialCompetencies(): CompetencyTopic[] {
@@ -538,6 +638,7 @@ function updateProfileWithMatch(
     totalTests: number;
     code?: string;
     playback?: any;
+    review?: any;
   }
 ): UserProfileData {
   const profile = getOrCreateUserProfile(username);
@@ -573,20 +674,43 @@ function updateProfileWithMatch(
   let playbackData = match.playback;
   if (!playbackData && match.code) {
     const lines = match.code.split('\n');
+    const durationSeconds = Math.max(1, parseDurationSeconds(match.duration));
+    const totalFrames = Math.max(1, lines.length);
     playbackData = {
+      matchId: `PLAYBACK-${uuidv4().slice(0, 8)}`,
+      problemTitle: match.problem,
       finalCode: match.code,
       language: match.language,
+      initialCode: lines.length ? lines[0] : '',
+      durationSeconds,
       totalKeystrokes: match.code.length,
-      wpm: 68,
-      syntaxErrorsCaught: 1,
+      averageWpm: 68,
+      peakWpm: 92,
+      cyclomaticComplexity: 4,
+      memoryEstimateKb: 64,
+      timeComplexityNotation: 'O(n)',
       efficiencyScore: 94,
-      timeline: lines.map((line, idx) => ({
-        lineIndex: idx + 1,
-        action: 'insert' as const,
-        content: line,
-        timestampMs: (idx + 1) * 1200,
-        wpmAtMoment: Math.min(95, 55 + (idx % 6) * 7),
+      frames: lines.map((_, idx) => ({
+        timestampMs: Math.round(((idx + 1) / totalFrames) * durationSeconds * 1000),
+        timeDisplay: `${Math.floor(((idx + 1) / totalFrames) * durationSeconds / 60).toString().padStart(2, '0')}:${Math.floor(((idx + 1) / totalFrames) * durationSeconds % 60).toString().padStart(2, '0')}`,
+        code: lines.slice(0, idx + 1).join('\n'),
+        activeLine: idx + 1,
+        totalLines: totalFrames,
+        wpm: Math.min(95, 55 + (idx % 6) * 7),
+        cpm: Math.min(95, 55 + (idx % 6) * 7) * 5,
+        action: idx === lines.length - 1 ? 'final' as const : 'insert' as const,
+        testsPassed: match.passedCount,
+        totalTests: match.totalTests,
       })),
+      milestones: [
+        {
+          timestampMs: 0,
+          timeDisplay: '00:00',
+          title: 'Solution Captured',
+          description: 'Submitted source reconstructed from the completed match.',
+          type: 'complete' as const,
+        },
+      ],
     };
   }
 
@@ -605,6 +729,7 @@ function updateProfileWithMatch(
     date: 'Today',
     timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
     playback: playbackData,
+    review: match.review,
   };
 
   profile.matches.unshift(newMatchRecord);
@@ -1199,28 +1324,43 @@ Generate:
           msgIndex++;
         }
 
-        // Bot wins if it reaches 100% first
-        if (botProgress >= 100) {
+        // Give the human a meaningful window before an automated opponent can finish.
+        const minimumBotMatchMs = 90_000;
+        const matchHasRunLongEnough = currentRoom.startTime && Date.now() - currentRoom.startTime >= minimumBotMatchMs;
+        if (botProgress >= 100 && matchHasRunLongEnough) {
           clearInterval(interval);
           botIntervals.delete(roomId);
           currentRoom.status = 'finished';
           currentRoom.winner = botId;
 
           const humanUser = Object.values(currentRoom.users).find((u: any) => u.id !== botId) as any;
-          if (humanUser && !isAlgoArena) {
+          if (humanUser) {
+            const humanReview = humanUser.submittedReview || buildFallbackReview(
+              humanUser.submittedCode || '',
+              humanUser.submittedLanguage || 'TypeScript',
+              currentRoom.problem,
+              'The opponent finished before your submission passed the suite. Review the reference solution and each flagged line below.',
+            );
             updateProfileWithMatch(humanUser.name, {
               opponent: botName,
               outcome: 'Defeat',
               problem: currentRoom.problem?.title || 'Competitive Challenge',
               difficulty: (currentRoom.problem?.difficulty || 'Medium') as any,
               duration: '14m 30s',
-              language: 'TypeScript',
+              language: humanUser.submittedLanguage || 'TypeScript',
               passedCount: 2,
               totalTests: 5,
+              code: humanUser.submittedCode,
+              review: humanReview,
             });
+            io.to(roomId).emit('match_over', {
+              winner: currentRoom.users[botId],
+              reviewByUserId: { [humanUser.id]: humanReview },
+            });
+          } else {
+            io.to(roomId).emit('match_over', { winner: currentRoom.users[botId] });
           }
 
-          io.to(roomId).emit('match_over', { winner: currentRoom.users[botId] });
           io.to(roomId).emit('room_state_update', currentRoom);
           io.to(roomId).emit('chat_message', { 
             system: true, 
@@ -1298,15 +1438,93 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       socket.to(roomId).emit('opponent_progress', { userId: socket.id, progress });
     });
 
+    socket.on('match_code_snapshot', ({ roomId, code, language, review }) => {
+      const room = rooms.get(roomId);
+      if (!room || !room.users[socket.id]) return;
+      room.users[socket.id].submittedCode = typeof code === 'string' ? code : '';
+      room.users[socket.id].submittedLanguage = typeof language === 'string' ? language : 'TypeScript';
+      room.users[socket.id].submittedReview = review;
+    });
+
+    socket.on('forfeit_match', ({ roomId }) => {
+      const room = rooms.get(roomId);
+      const forfeitingUser = room?.users[socket.id] as any;
+      if (!room || !forfeitingUser || room.status !== 'active') return;
+
+      const opponent = Object.values(room.users).find((user: any) => user.id !== socket.id) as any;
+      room.status = 'finished';
+      room.winner = opponent?.id;
+      if (botIntervals.has(roomId)) {
+        clearInterval(botIntervals.get(roomId)!);
+        botIntervals.delete(roomId);
+      }
+
+      if (forfeitingUser.name && opponent && !forfeitingUser.isAi) {
+        const forfeitedReview = forfeitingUser.submittedReview || buildFallbackReview(
+          forfeitingUser.submittedCode || '',
+          forfeitingUser.submittedLanguage || 'TypeScript',
+          room.problem,
+          'Match forfeited before submission. Review the expected solution to study the intended approach.',
+        );
+        updateProfileWithMatch(forfeitingUser.name, {
+          opponent: opponent.name,
+          outcome: 'Defeat',
+          problem: room.problem?.title || 'Competitive Challenge',
+          difficulty: (room.problem?.difficulty || 'Medium') as any,
+          duration: 'Forfeited',
+          language: forfeitingUser.submittedLanguage || 'TypeScript',
+          passedCount: 0,
+          totalTests: 1,
+          code: forfeitingUser.submittedCode,
+          review: forfeitedReview,
+        });
+        if (!opponent.isAi) {
+          updateProfileWithMatch(opponent.name, {
+            opponent: forfeitingUser.name,
+            outcome: 'Victory',
+            problem: room.problem?.title || 'Competitive Challenge',
+            difficulty: (room.problem?.difficulty || 'Medium') as any,
+            duration: 'Forfeited',
+            language: opponent.submittedLanguage || 'TypeScript',
+            passedCount: opponent.progress >= 100 ? 5 : 0,
+            totalTests: 5,
+            code: opponent.submittedCode,
+            review: opponent.submittedReview,
+          });
+        }
+        io.to(roomId).emit('match_over', {
+          winner: opponent,
+          reason: 'forfeit',
+          forfeitedBy: forfeitingUser.name,
+          reviewByUserId: { [forfeitingUser.id]: forfeitedReview },
+        });
+      } else {
+        io.to(roomId).emit('match_over', { winner: opponent, reason: 'forfeit', forfeitedBy: forfeitingUser.name });
+      }
+
+      io.to(roomId).emit('room_state_update', room);
+    });
+
     socket.on('send_chat', ({ roomId, text }) => {
       const room = rooms.get(roomId);
       if (!room || !room.users[socket.id]) return;
       io.to(roomId).emit('chat_message', { user: room.users[socket.id].name, text });
     });
 
-    socket.on('match_won', ({ roomId, problemTitle, difficulty, language, duration, passedCount, totalTests, code, playback }) => {
+    socket.on('leave_room', ({ roomId }) => {
       const room = rooms.get(roomId);
-      if (!room || !room.users[socket.id]) return;
+      if (!room || !room.users[socket.id] || room.status === 'active') return;
+      const leavingUser = room.users[socket.id];
+      delete room.users[socket.id];
+      socket.leave(roomId);
+      io.to(roomId).emit('room_state_update', room);
+      io.to(roomId).emit('chat_message', { system: true, text: `${leavingUser.name} left the room.` });
+      if (Object.keys(room.users).length === 0) rooms.delete(roomId);
+    });
+
+    socket.on('match_won', ({ roomId, problemTitle, difficulty, language, duration, passedCount, totalTests, code, playback, review }) => {
+      const room = rooms.get(roomId);
+      if (!room || room.status !== 'active' || !room.users[socket.id]) return;
 
       if (botIntervals.has(roomId)) {
         clearInterval(botIntervals.get(roomId)!);
@@ -1321,6 +1539,22 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       const opponents = Object.values(room.users).filter((u: any) => u.id !== socket.id) as any[];
       const opponentUser = opponents[0];
       const opponentName = opponentUser?.name || 'AlgoArena Sparring Bot';
+      const winnerCode = code || winnerUser.submittedCode;
+      const winnerLanguage = language || winnerUser.submittedLanguage || 'TypeScript';
+      const winnerReview = review || winnerUser.submittedReview || buildFallbackReview(
+        winnerCode || '',
+        winnerLanguage,
+        room.problem,
+        'Submission completed the match. Compare your implementation with the reference solution for refinement opportunities.',
+      );
+      const opponentReview = opponentUser && !opponentUser.isBot
+        ? opponentUser.submittedReview || buildFallbackReview(
+          opponentUser.submittedCode || '',
+          opponentUser.submittedLanguage || winnerLanguage,
+          room.problem,
+          'The opponent completed the match first. Review the reference solution and the flagged lines in your submission.',
+        )
+        : undefined;
 
       updateProfileWithMatch(winnerUser.name, {
         opponent: opponentName,
@@ -1328,11 +1562,12 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
         problem: problemTitle || room.problem?.title || 'Competitive Challenge',
         difficulty: (difficulty || room.problem?.difficulty || 'Medium') as any,
         duration: duration || '12m 30s',
-        language: language || 'TypeScript',
+        language: winnerLanguage,
         passedCount: passedCount || 5,
         totalTests: totalTests || 5,
-        code,
+        code: winnerCode,
         playback,
+        review: winnerReview,
       });
 
       // If opponent was a real connected human user, record their defeat
@@ -1343,20 +1578,78 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
           problem: problemTitle || room.problem?.title || 'Competitive Challenge',
           difficulty: (difficulty || room.problem?.difficulty || 'Medium') as any,
           duration: duration || '12m 30s',
-          language: language || 'TypeScript',
+          language: opponentUser.submittedLanguage || winnerLanguage,
           passedCount: 2,
           totalTests: totalTests || 5,
+          code: opponentUser.submittedCode,
+          review: opponentReview,
         });
       }
 
-      io.to(roomId).emit('match_over', { winner: winnerUser });
+      io.to(roomId).emit('match_over', {
+        winner: winnerUser,
+        reviewByUserId: {
+          [winnerUser.id]: winnerReview,
+          ...(opponentUser && opponentReview ? { [opponentUser.id]: opponentReview } : {}),
+        },
+      });
       io.to(roomId).emit('room_state_update', room);
     });
 
     socket.on('disconnect', () => {
       rooms.forEach((room, roomId) => {
         if (room.users[socket.id]) {
-          const name = room.users[socket.id].name;
+          const disconnectedUser = room.users[socket.id] as any;
+          const name = disconnectedUser.name;
+          const opponent = Object.values(room.users).find((user: any) => user.id !== socket.id) as any;
+          if (room.status === 'active' && opponent) {
+            room.status = 'finished';
+            room.winner = opponent.id;
+            if (botIntervals.has(roomId)) {
+              clearInterval(botIntervals.get(roomId)!);
+              botIntervals.delete(roomId);
+            }
+            const disconnectedReview = buildFallbackReview(
+              disconnectedUser.submittedCode || '',
+              disconnectedUser.submittedLanguage || 'TypeScript',
+              room.problem,
+              'The match ended because the connection was lost. Review the expected solution and the captured submission below.',
+            );
+            io.to(roomId).emit('match_over', {
+              winner: opponent,
+              reason: 'disconnect',
+              forfeitedBy: name,
+              reviewByUserId: { [disconnectedUser.id]: disconnectedReview },
+            });
+            if (!disconnectedUser.isAi) {
+              updateProfileWithMatch(disconnectedUser.name, {
+                opponent: opponent.name,
+                outcome: 'Defeat',
+                problem: room.problem?.title || 'Competitive Challenge',
+                difficulty: (room.problem?.difficulty || 'Medium') as any,
+                duration: 'Disconnected',
+                language: disconnectedUser.submittedLanguage || 'TypeScript',
+                passedCount: 0,
+                totalTests: 1,
+                code: disconnectedUser.submittedCode,
+                review: disconnectedReview,
+              });
+              if (!opponent.isAi) {
+                updateProfileWithMatch(opponent.name, {
+                  opponent: disconnectedUser.name,
+                  outcome: 'Victory',
+                  problem: room.problem?.title || 'Competitive Challenge',
+                  difficulty: (room.problem?.difficulty || 'Medium') as any,
+                  duration: 'Disconnected',
+                  language: opponent.submittedLanguage || 'TypeScript',
+                  passedCount: opponent.progress >= 100 ? 5 : 0,
+                  totalTests: 5,
+                  code: opponent.submittedCode,
+                  review: opponent.submittedReview,
+                });
+              }
+            }
+          }
           delete room.users[socket.id];
           io.to(roomId).emit('room_state_update', room);
           io.to(roomId).emit('chat_message', { system: true, text: `${name} disconnected from arena node.` });

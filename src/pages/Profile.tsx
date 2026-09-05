@@ -28,6 +28,7 @@ import { CompetencyRadar } from '../components/CompetencyRadar';
 import { MatchHistory } from '../components/MatchHistory';
 import { CodePlayback } from '../components/CodePlayback';
 import { FriendActions } from '../components/FriendActions';
+import { CodeReview } from '../components/CodeReview';
 import { useStore } from '../store';
 import { UserProfileData, MatchRecord } from '../types';
 
@@ -432,6 +433,13 @@ export function Profile() {
 
           {/* Interactive Code Playback Component */}
           <CodePlayback match={selectedPlaybackMatch} />
+          {selectedPlaybackMatch?.review && (
+            <CodeReview
+              review={selectedPlaybackMatch.review}
+              submittedCode={selectedPlaybackMatch.playback?.finalCode}
+              language={selectedPlaybackMatch.language}
+            />
+          )}
         </section>
 
         {/* Analytics Grid */}

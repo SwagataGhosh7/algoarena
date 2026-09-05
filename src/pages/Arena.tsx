@@ -4,11 +4,12 @@ import { socket } from '../socket';
 import { useStore } from '../store';
 import { RoomState, ChatMessage, EvaluationResult } from '../types';
 import Editor from '@monaco-editor/react';
-import { Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, Code2 } from 'lucide-react';
+import { Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, Code2, Flag } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { FriendActions } from '../components/FriendActions';
+import { CodeReview } from '../components/CodeReview';
 
 const STARTER_TEMPLATES: Record<string, string> = {
   javascript: `// AlgoArena JavaScript Solution
@@ -93,6 +94,10 @@ export function Arena() {
   const [selectedTopic, setSelectedTopic] = useState(queryTopic || 'Dynamic Programming');
   const [hintLoading, setHintLoading] = useState(false);
   const [recentHint, setRecentHint] = useState<string | null>(null);
+  const [matchEndReason, setMatchEndReason] = useState<string | null>(null);
+  const [postMatchReview, setPostMatchReview] = useState<EvaluationResult['review'] | null>(null);
+  const [isForfeiting, setIsForfeiting] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const autoSummonedRef = useRef(false);
@@ -130,7 +135,9 @@ export function Arena() {
       // room state handles updates
     });
     
-    socket.on('match_over', ({ winner }) => {
+     socket.on('match_over', ({ winner, reason, reviewByUserId }) => {
+       setMatchEndReason(reason || null);
+       setPostMatchReview(reviewByUserId?.[socket.id!] || null);
        setChat(prev => [...prev, { system: true, text: `MATCH TERMINATED // ${winner.name} WINS` }]);
     });
 
@@ -143,6 +150,15 @@ export function Arena() {
       socket.disconnect();
     };
   }, [roomId, currentUser, isPracticeMode, selectedTopic]);
+
+  // Keep the latest editor contents available if the opponent finishes or the connection drops first.
+  useEffect(() => {
+    if (!roomId || !code) return;
+    const snapshotTimer = setTimeout(() => {
+      socket.emit('match_code_snapshot', { roomId, code, language, review: evalResult?.review });
+    }, 350);
+    return () => clearTimeout(snapshotTimer);
+  }, [roomId, code, language, evalResult?.review]);
 
   // Auto-summon AlgoArena Bot if launched from Practice mode
   useEffect(() => {
@@ -205,6 +221,33 @@ export function Arena() {
     setTimeout(() => setHintLoading(false), 4000);
   };
 
+  const forfeitMatch = () => {
+    if (room?.status !== 'active' || isForfeiting) return;
+    if (window.confirm('Forfeit this match? Your opponent will be awarded the victory.')) {
+      setIsForfeiting(true);
+      const opponentId = Object.values(room.users).find(user => user.id !== socket.id)?.id;
+      setRoom(current => current ? { ...current, status: 'finished', winner: opponentId } : current);
+      socket.emit('forfeit_match', { roomId });
+    }
+  };
+
+  const copyInviteLink = async () => {
+    const inviteLink = `${window.location.origin}/room/${roomId}`;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1800);
+    } catch {
+      window.prompt('Copy this private match link:', inviteLink);
+    }
+  };
+
+  const leaveRoom = () => {
+    if (room?.status === 'active') return;
+    socket.emit('leave_room', { roomId });
+    navigate('/');
+  };
+
   const handleLanguageChange = (newLang: string) => {
     setLanguage(newLang);
     const isCurrentTemplate = Object.values(STARTER_TEMPLATES).some(t => t.trim() === code.trim()) || !code.trim();
@@ -238,6 +281,12 @@ export function Arena() {
       
       const result: EvaluationResult = await res.json();
       setEvalResult(result);
+
+      socket.emit('match_code_snapshot', {
+        roomId,
+        code,
+        language,
+      });
       
       const passedCount = result.testResults?.filter(t => t.passed).length || 0;
       const totalCount = result.testResults?.length || 1;
@@ -260,6 +309,8 @@ export function Arena() {
           duration: formattedDuration,
           passedCount,
           totalTests: totalCount,
+          code,
+          review: result.review,
         });
       }
       
@@ -294,11 +345,11 @@ export function Arena() {
       <nav className="h-14 border-b border-[#00FF00]/30 flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0 z-10">
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => navigate('/')} 
-            className="text-zinc-400 hover:text-[#00FF00] transition-colors p-1"
-            title="Leave Match"
+            onClick={leaveRoom} 
+            className="flex items-center gap-1.5 text-zinc-400 hover:text-[#00FF00] transition-colors px-2 py-1 border border-white/10 hover:border-[#00FF00]/50 font-mono text-[10px] font-bold uppercase"
+            title={room.status === 'active' ? 'Forfeit the active match first' : 'Leave room'}
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" /> LEAVE ROOM
           </button>
           <div className="flex items-center gap-3">
             <span className="text-[#00FF00] font-black text-lg sm:text-xl tracking-tighter uppercase">
@@ -378,6 +429,17 @@ export function Arena() {
                 {room.winner === socket.id ? 'VICTORIOUS' : 'DEFEATED'}
               </div>
             )}
+            {room.status === 'active' && (
+              <button
+                type="button"
+                onClick={forfeitMatch}
+                disabled={isForfeiting}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/50 text-red-400 hover:bg-red-500/10 font-mono text-[10px] font-black uppercase transition-colors disabled:opacity-50"
+                title="Forfeit this match"
+              >
+                <Flag className="w-3 h-3" /> {isForfeiting ? 'ENDING...' : 'FORFEIT'}
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -415,6 +477,16 @@ export function Arena() {
                       ? 'No challenger detected. Engage AlgoArena Bot for interactive DSA drills with real-time hints, or summon a Gemini duel bot.'
                       : `${opponent?.name} connected. Ready up to initialize algorithmic test cases.`}
                   </p>
+                {room.status === 'waiting' && !isPracticeMode && (
+                  <button
+                    type="button"
+                    onClick={copyInviteLink}
+                    className="w-full max-w-[260px] py-2 bg-[#00FF00]/10 border border-[#00FF00]/50 text-[#00FF00] hover:bg-[#00FF00]/20 font-mono text-[11px] font-black uppercase flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Code2 className="w-3.5 h-3.5" />
+                    {inviteCopied ? 'INVITE LINK COPIED' : 'COPY 1V1 INVITE LINK'}
+                  </button>
+                )}
                 </div>
 
                 {/* AI & Bot Summon Controls */}
@@ -721,8 +793,17 @@ export function Arena() {
                     {room.winner === socket.id ? 'MATCH WON' : 'DEFEAT'}
                   </h2>
                   <p className="text-zinc-400 font-mono text-sm mb-6 uppercase tracking-wider">
-                    {room.winner === socket.id ? 'All test cases verified. ELO +25 Points.' : 'Opponent completed solution first.'}
+                    {matchEndReason === 'forfeit'
+                      ? 'The match ended by forfeit. The remaining player receives the victory.'
+                      : matchEndReason === 'disconnect'
+                        ? 'The match ended because a player disconnected. The remaining player receives the victory.'
+                        : room.winner === socket.id ? 'All test cases verified. ELO +25 Points.' : 'Opponent completed solution first.'}
                   </p>
+                  {(postMatchReview || evalResult?.review) && (
+                    <div className="w-full max-w-3xl mb-5 text-left max-h-[42vh] overflow-y-auto">
+                      <CodeReview review={(postMatchReview || evalResult?.review)!} submittedCode={code} language={language} />
+                    </div>
+                  )}
                   {opponent && !opponent.isAi && (
                     <div className="mb-5">
                       <FriendActions username={opponent.name} showProfileLink />
