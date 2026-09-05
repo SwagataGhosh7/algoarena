@@ -7,6 +7,9 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { Arena } from './pages/Arena';
 import { Profile } from './pages/Profile';
+import { LeaderboardPage } from './pages/LeaderboardPage';
+import { AuthModal } from './components/AuthModal';
+import { ProfileSetupModal } from './components/ProfileSetupModal';
 
 export default function App() {
   return (
@@ -15,7 +18,10 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/room/:id" element={<Arena />} />
         <Route path="/profile/:username" element={<Profile />} />
+        <Route path="/leaderboard" element={<LeaderboardPage />} />
       </Routes>
+      <AuthModal />
+      <ProfileSetupModal />
     </BrowserRouter>
   );
 }

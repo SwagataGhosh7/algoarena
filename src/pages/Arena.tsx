@@ -1,36 +1,110 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { socket } from '../socket';
 import { useStore } from '../store';
 import { RoomState, ChatMessage, EvaluationResult } from '../types';
 import Editor from '@monaco-editor/react';
-import { Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, Sparkles, X, Check, Trophy, Activity, Terminal } from 'lucide-react';
+import { Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, Code2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
+const STARTER_TEMPLATES: Record<string, string> = {
+  javascript: `// AlgoArena JavaScript Solution
+function solution(input) {
+  // Write your algorithmic logic here
+  return input;
+}
+`,
+  python: `# AlgoArena Python 3.11 Solution
+def solution(input_data):
+    # Write your algorithmic logic here
+    return input_data
+`,
+  cpp: `// AlgoArena C++ 20 Solution
+#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+
+using namespace std;
+
+class Solution {
+public:
+    int solution(int input) {
+        // Write your algorithmic logic here
+        return input;
+    }
+};
+`,
+  typescript: `// AlgoArena TypeScript Solution
+function solution(input: any): any {
+  // Write your algorithmic logic here
+  return input;
+}
+`,
+  c: `// AlgoArena C (C17 / GCC) Solution
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int solution(int input) {
+    // Write your algorithmic logic here
+    return input;
+}
+`,
+  java: `// AlgoArena Java (OpenJDK 21) Solution
+import java.util.*;
+
+public class Solution {
+    public static int solution(int input) {
+        // Write your algorithmic logic here
+        return input;
+    }
+}
+`,
+};
+
 export function Arena() {
   const { id: roomId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useStore();
+
+  const queryMode = searchParams.get('mode');
+  const queryTopic = searchParams.get('topic');
+  const queryDiff = searchParams.get('diff') as 'easy' | 'medium' | 'hard' | null;
+  const queryLang = searchParams.get('lang');
+
+  const isPracticeMode = queryMode === 'practice' || roomId?.startsWith('practice-');
   
   const [room, setRoom] = useState<RoomState | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   
-  const [code, setCode] = useState('// Write your solution here\nfunction solution(input) {\n  return input;\n}\n');
-  const [language, setLanguage] = useState('javascript');
+  const [language, setLanguage] = useState(queryLang && STARTER_TEMPLATES[queryLang] ? queryLang : 'javascript');
+  const [code, setCode] = useState(STARTER_TEMPLATES[queryLang && STARTER_TEMPLATES[queryLang] ? queryLang : 'javascript']);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evalResult, setEvalResult] = useState<EvaluationResult | null>(null);
   const [myProgress, setMyProgress] = useState(0);
   const [timerSeconds, setTimerSeconds] = useState(600); // 10:00 timer
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>(queryDiff || 'medium');
+  const [selectedTopic, setSelectedTopic] = useState(queryTopic || 'Dynamic Programming');
+  const [hintLoading, setHintLoading] = useState(false);
+  const [recentHint, setRecentHint] = useState<string | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const autoSummonedRef = useRef(false);
 
   useEffect(() => {
     socket.connect();
     
-    socket.emit('join_room', { roomId, user: currentUser });
+    socket.emit('join_room', { 
+      roomId, 
+      user: currentUser,
+      mode: isPracticeMode ? 'practice' : 'duel',
+      topic: selectedTopic,
+    });
 
     socket.on('room_state_update', (state: RoomState) => {
       setRoom(state);
@@ -38,12 +112,17 @@ export function Arena() {
 
     socket.on('chat_message', (msg: ChatMessage) => {
       setChat(prev => [...prev, msg]);
+      if (msg.isHint) {
+        setRecentHint(msg.text.replace(/^💡\s*DSA HINT:\s*/, ''));
+        setHintLoading(false);
+      }
     });
 
     socket.on('match_started', () => {
       setChat(prev => [...prev, { system: true, text: 'MATCH COMMENCED // TIMER ENGAGED' }]);
       setEvalResult(null);
       setMyProgress(0);
+      setRecentHint(null);
     });
 
     socket.on('opponent_progress', ({ progress }) => {
@@ -62,7 +141,24 @@ export function Arena() {
       socket.off('match_over');
       socket.disconnect();
     };
-  }, [roomId, currentUser]);
+  }, [roomId, currentUser, isPracticeMode, selectedTopic]);
+
+  // Auto-summon AlgoArena Bot if launched from Practice mode
+  useEffect(() => {
+    if (isPracticeMode && !autoSummonedRef.current && room && room.status === 'waiting') {
+      const opponents = Object.values(room.users).filter(u => u.id !== socket.id);
+      if (opponents.length === 0) {
+        autoSummonedRef.current = true;
+        socket.emit('add_bot', {
+          roomId,
+          difficulty: selectedDifficulty,
+          botName: 'AlgoArena Bot',
+          isPractice: true,
+          topic: selectedTopic,
+        });
+      }
+    }
+  }, [isPracticeMode, room, roomId, selectedDifficulty, selectedTopic]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -84,7 +180,36 @@ export function Arena() {
   };
 
   const toggleReady = () => {
-    socket.emit('toggle_ready', { roomId });
+    socket.emit('toggle_ready', { roomId, difficulty: selectedDifficulty });
+  };
+
+  const summonAiBot = () => {
+    socket.emit('add_bot', { roomId, difficulty: selectedDifficulty });
+  };
+
+  const summonAlgoArenaBot = () => {
+    socket.emit('add_bot', { 
+      roomId, 
+      difficulty: selectedDifficulty,
+      botName: 'AlgoArena Bot',
+      isPractice: true,
+      topic: selectedTopic,
+    });
+  };
+
+  const requestBotHint = () => {
+    if (hintLoading || !room?.problem) return;
+    setHintLoading(true);
+    socket.emit('request_bot_hint', { roomId });
+    setTimeout(() => setHintLoading(false), 4000);
+  };
+
+  const handleLanguageChange = (newLang: string) => {
+    setLanguage(newLang);
+    const isCurrentTemplate = Object.values(STARTER_TEMPLATES).some(t => t.trim() === code.trim()) || !code.trim();
+    if (isCurrentTemplate && STARTER_TEMPLATES[newLang]) {
+      setCode(STARTER_TEMPLATES[newLang]);
+    }
   };
 
   const sendChat = (e: React.FormEvent) => {
@@ -121,7 +246,20 @@ export function Arena() {
       socket.emit('progress_update', { roomId, progress });
       
       if (result.allPassed) {
-        socket.emit('match_won', { roomId });
+        const elapsedSecs = Math.max(15, 600 - timerSeconds);
+        const durationMins = Math.floor(elapsedSecs / 60);
+        const durationRemSecs = elapsedSecs % 60;
+        const formattedDuration = `${durationMins}m ${durationRemSecs.toString().padStart(2, '0')}s`;
+
+        socket.emit('match_won', { 
+          roomId,
+          problemTitle: room.problem.title,
+          difficulty: room.problem.difficulty,
+          language,
+          duration: formattedDuration,
+          passedCount,
+          totalTests: totalCount,
+        });
       }
       
     } catch (error) {
@@ -185,17 +323,33 @@ export function Arena() {
           {/* Opponent Profile status */}
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className="text-[10px] font-bold uppercase text-zinc-500">Opponent</p>
+              <p className="text-[10px] font-bold uppercase text-zinc-500 flex items-center justify-end gap-1">
+                {opponent?.name === 'AlgoArena Bot' ? (
+                  <>
+                    <Bot className="w-3 h-3 text-[#00FF00]" />
+                    <span>ALGOARENA BOT // DSA PRACTICE</span>
+                  </>
+                ) : opponent?.isAi ? (
+                  <>
+                    <Sparkles className="w-3 h-3 text-[#00FF00]" />
+                    <span>GEMINI AI OPPONENT</span>
+                  </>
+                ) : (
+                  <span>OPPONENT</span>
+                )}
+              </p>
               <p className="text-xs sm:text-sm font-bold text-white">
-                {opponent ? opponent.name : 'AWAITING...'} 
-                <span className="text-[#F27D26] ml-1 font-mono text-xs">[Gold II]</span>
+                {opponent ? opponent.name : 'AWAITING DUELIST...'} 
+                <span className="text-[#F27D26] ml-1 font-mono text-xs">
+                  {opponent?.name === 'AlgoArena Bot' ? '[PRACTICE BOT]' : '[Diamond III]'}
+                </span>
               </p>
             </div>
             <div className={clsx(
               "w-8 h-8 border flex items-center justify-center font-mono text-xs font-bold uppercase",
               opponent?.ready ? "border-[#00FF00] bg-[#00FF00]/20 text-[#00FF00]" : "border-white/10 bg-zinc-900 text-zinc-600"
             )}>
-              {opponent ? opponent.name[0] : '?'}
+              {opponent?.name === 'AlgoArena Bot' ? <Bot className="w-4 h-4 text-[#00FF00]" /> : opponent ? opponent.name[0] : '?'}
             </div>
           </div>
 
@@ -205,7 +359,7 @@ export function Arena() {
               <button 
                 onClick={toggleReady}
                 className={clsx(
-                  "px-5 py-2 font-black uppercase text-xs tracking-widest transition-all",
+                  "px-5 py-2 font-black uppercase text-xs tracking-widest transition-all cursor-pointer",
                   me?.ready 
                     ? "bg-zinc-800 text-zinc-300 border border-white/20 hover:bg-zinc-700" 
                     : "bg-[#00FF00] text-black hover:bg-[#00CC00] shadow-[0_0_15px_rgba(0,255,0,0.3)]"
@@ -233,21 +387,90 @@ export function Arena() {
             <h2 className="text-[11px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
               <CheckSquare className="w-3.5 h-3.5 text-[#00FF00]" /> PROBLEM SPECIFICATION
             </h2>
-            <span className="text-[10px] font-mono text-zinc-600 uppercase font-bold">DSA-CORE</span>
+            <span className="text-[10px] font-mono text-[#00FF00] uppercase font-bold">
+              {isPracticeMode ? 'DSA PRACTICE' : 'GEMINI 2.5 FLASH'}
+            </span>
           </div>
 
           <div className="p-6 overflow-y-auto flex-1 custom-scrollbar flex flex-col gap-6">
             {room.status === 'waiting' ? (
-              <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 space-y-4 my-auto">
-                <div className="w-14 h-14 bg-black border border-white/10 flex items-center justify-center shadow-inner">
-                  <ShieldAlert className="w-6 h-6 text-[#00FF00]" />
+              <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 space-y-4 my-auto p-4">
+                <div className="w-14 h-14 bg-black border border-[#00FF00]/30 flex items-center justify-center shadow-[0_0_20px_rgba(0,255,0,0.15)]">
+                  {isPracticeMode ? (
+                    <Bot className="w-7 h-7 text-[#00FF00]" />
+                  ) : (
+                    <Sparkles className="w-7 h-7 text-[#00FF00]" />
+                  )}
                 </div>
                 <div>
-                  <p className="font-mono text-xs uppercase font-bold text-zinc-300">LOBBY INITIALIZING</p>
-                  <p className="text-[11px] font-mono text-zinc-500 mt-1 max-w-[200px] leading-relaxed">
-                    Both duelists must hit READY to prompt Gemini API problem generation.
+                  <p className="font-mono text-xs uppercase font-bold text-zinc-200">
+                    {isPracticeMode ? 'DSA PRACTICE ARENA ACTIVE' : 'ARENA LOBBY ACTIVE'}
+                  </p>
+                  <p className="text-[11px] font-mono text-zinc-400 mt-1 max-w-[240px] leading-relaxed">
+                    {opponents.length === 0 
+                      ? 'No challenger detected. Engage AlgoArena Bot for interactive DSA drills with real-time hints, or summon a Gemini duel bot.'
+                      : `${opponent?.name} connected. Ready up to initialize algorithmic test cases.`}
                   </p>
                 </div>
+
+                {/* AI & Bot Summon Controls */}
+                {opponents.length === 0 && (
+                  <div className="w-full max-w-[260px] pt-2 space-y-3">
+                    <button
+                      onClick={summonAlgoArenaBot}
+                      className="w-full py-2.5 bg-[#00FF00] hover:bg-[#00DD00] text-black font-mono text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(0,255,0,0.3)]"
+                    >
+                      <Bot className="w-4 h-4" />
+                      PLAY WITH ALGOARENA BOT
+                    </button>
+
+                    <button
+                      onClick={summonAiBot}
+                      className="w-full py-2 bg-[#00FF00]/10 border border-[#00FF00]/40 hover:bg-[#00FF00]/20 text-[#00FF00] font-mono text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      SUMMON GEMINI DUEL BOT
+                    </button>
+
+                    <div className="space-y-2 pt-1 border-t border-white/10 text-left">
+                      <div className="flex items-center justify-between font-mono text-[10px]">
+                        <span className="text-zinc-500">DSA TOPIC:</span>
+                        <select
+                          value={selectedTopic}
+                          onChange={e => setSelectedTopic(e.target.value)}
+                          className="bg-black text-[#00FF00] border border-white/10 px-2 py-0.5 text-[10px] font-mono uppercase outline-none"
+                        >
+                          <option value="Arrays & Strings">Arrays & Strings</option>
+                          <option value="Dynamic Programming">Dynamic Programming</option>
+                          <option value="Trees & Graphs">Trees & Graphs</option>
+                          <option value="Backtracking">Backtracking</option>
+                          <option value="Binary Search">Binary Search</option>
+                          <option value="Greedy Algorithms">Greedy Algorithms</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between font-mono text-[10px]">
+                        <span className="text-zinc-500">DIFFICULTY:</span>
+                        <div className="flex gap-1">
+                          {(['easy', 'medium', 'hard'] as const).map(diff => (
+                            <button
+                              key={diff}
+                              onClick={() => setSelectedDifficulty(diff)}
+                              className={clsx(
+                                "px-2 py-0.5 border uppercase font-bold cursor-pointer transition-colors text-[10px]",
+                                selectedDifficulty === diff 
+                                  ? "bg-[#00FF00] text-black border-[#00FF00]" 
+                                  : "bg-black text-zinc-400 border-white/10 hover:border-white/30"
+                              )}
+                            >
+                              {diff}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : room.problem ? (
               <div className="space-y-6">
@@ -346,6 +569,46 @@ export function Arena() {
                   </ul>
                 </div>
 
+                {/* AlgoArena Bot DSA Coach / Hint Assistant */}
+                <div className="border border-[#00FF00]/30 bg-[#00FF00]/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-[#00FF00] uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                      <Bot className="w-3.5 h-3.5 text-[#00FF00]" />
+                      ALGOARENA BOT // DSA COACH
+                    </span>
+                    <button
+                      onClick={requestBotHint}
+                      disabled={hintLoading}
+                      className="px-2 py-1 bg-[#00FF00]/20 hover:bg-[#00FF00]/30 border border-[#00FF00]/40 text-[#00FF00] text-[10px] font-mono font-bold uppercase cursor-pointer disabled:opacity-50 flex items-center gap-1 transition-all"
+                    >
+                      {hintLoading ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>ANALYZING...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lightbulb className="w-3 h-3" />
+                          <span>GET DSA HINT</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {recentHint ? (
+                    <div className="p-2.5 bg-black/80 border border-[#00FF00]/40 text-zinc-200 text-[11px] font-mono leading-relaxed shadow-[0_0_10px_rgba(0,255,0,0.1)]">
+                      <div className="text-[#00FF00] font-bold flex items-center gap-1 mb-1">
+                        <Lightbulb className="w-3 h-3" />
+                        <span>HINT DISPATCH:</span>
+                      </div>
+                      <p className="text-zinc-300">{recentHint}</p>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] font-mono text-zinc-500 italic">
+                      Need guidance on edge cases, recurrence formulas, or data structures? Click to request a targeted DSA hint from AlgoArena Bot.
+                    </p>
+                  )}
+                </div>
+
                 {/* Sabotage Ready Indicator */}
                 <div className="mt-auto border border-[#00FF00]/20 bg-[#00FF00]/5 p-3 rounded-none">
                   <p className="text-[10px] font-black text-[#00FF00] uppercase tracking-wider mb-1">
@@ -365,7 +628,15 @@ export function Arena() {
           {/* Editor Header */}
           <div className="h-10 bg-[#121212] flex items-center justify-between px-4 border-b border-white/5 shrink-0">
             <div className="flex items-center gap-4 text-xs font-mono">
-              <span className="text-[#00FF00] font-bold">solution.{language === 'python' ? 'py' : language === 'cpp' ? 'cpp' : 'js'}</span>
+              <span className="text-[#00FF00] font-bold">
+                solution.{
+                  language === 'python' ? 'py' :
+                  language === 'cpp' ? 'cpp' :
+                  language === 'c' ? 'c' :
+                  language === 'java' ? 'java' :
+                  language === 'typescript' ? 'ts' : 'js'
+                }
+              </span>
               <span className="text-zinc-600">|</span>
               <span className="text-zinc-500">RUNTIME_ENV</span>
             </div>
@@ -376,13 +647,15 @@ export function Arena() {
               </span>
               <select 
                 value={language}
-                onChange={e => setLanguage(e.target.value)}
+                onChange={e => handleLanguageChange(e.target.value)}
                 className="bg-[#181818] text-[#00FF00] text-xs font-mono font-bold px-2 py-1 border border-white/10 outline-none uppercase cursor-pointer hover:border-[#00FF00]/50"
               >
                 <option value="javascript">JavaScript (ES6)</option>
                 <option value="python">Python 3.11</option>
                 <option value="cpp">C++ 20</option>
                 <option value="typescript">TypeScript 5.x</option>
+                <option value="c">C (GCC 17)</option>
+                <option value="java">Java (OpenJDK 21)</option>
               </select>
             </div>
           </div>
@@ -391,7 +664,13 @@ export function Arena() {
           <div className="flex-1 relative bg-black/40">
             <Editor
               height="100%"
-              language={language}
+              language={
+                language === 'c' ? 'c' :
+                language === 'cpp' ? 'cpp' :
+                language === 'java' ? 'java' :
+                language === 'python' ? 'python' :
+                language === 'typescript' ? 'typescript' : 'javascript'
+              }
               theme="vs-dark"
               value={code}
               onChange={val => setCode(val || '')}
@@ -560,16 +839,41 @@ export function Arena() {
             <div className="flex-1 font-mono text-[11px] space-y-2.5 overflow-y-auto custom-scrollbar opacity-90 pr-1">
               <div className="text-zinc-600">[00:00] SYSTEM: Match room connected.</div>
               {chat.map((msg, i) => (
-                <div key={i} className={clsx(msg.system ? "text-[#00FF00] italic text-[10px]" : "text-zinc-300")}>
-                  {!msg.system && (
-                    <span className={clsx(
-                      "font-black mr-2 uppercase",
-                      msg.user === me?.name ? "text-[#00FF00]" : "text-[#F27D26]"
-                    )}>
-                      {msg.user}:
-                    </span>
+                <div key={i} className={clsx(
+                  msg.isHint 
+                    ? "bg-[#00FF00]/10 border border-[#00FF00]/40 p-2 text-[#00FF00] rounded-none shadow-[0_0_8px_rgba(0,255,0,0.15)]" 
+                    : msg.system 
+                      ? "text-[#00FF00] italic text-[10px]" 
+                      : "text-zinc-300"
+                )}>
+                  {msg.isHint ? (
+                    <div>
+                      <div className="flex items-center gap-1 font-black text-[10px] text-[#00FF00] uppercase mb-1">
+                        <Lightbulb className="w-3 h-3" />
+                        <span>DSA COACH HINT</span>
+                      </div>
+                      <div className="text-zinc-200 text-[10.5px] leading-relaxed whitespace-pre-wrap">
+                        {msg.text.replace(/^💡\s*DSA HINT:\s*/, '')}
+                      </div>
+                    </div>
+                  ) : !msg.system ? (
+                    <div>
+                      <span className={clsx(
+                        "font-black mr-2 uppercase inline-flex items-center gap-1",
+                        msg.user === me?.name 
+                          ? "text-[#00FF00]" 
+                          : msg.user === 'AlgoArena Bot' 
+                            ? "text-emerald-400" 
+                            : "text-[#F27D26]"
+                      )}>
+                        {msg.user === 'AlgoArena Bot' && <Bot className="w-3 h-3 inline" />}
+                        {msg.user}:
+                      </span>
+                      <span>{msg.text}</span>
+                    </div>
+                  ) : (
+                    <span>{msg.text}</span>
                   )}
-                  <span>{msg.text}</span>
                 </div>
               ))}
               <div ref={chatEndRef} />
