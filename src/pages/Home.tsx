@@ -28,7 +28,6 @@ export function Home() {
   const navigate = useNavigate();
   const { 
     currentUser, 
-    authUser, 
     accountProfile, 
     setAuthModalOpen, 
     logout, 
@@ -86,7 +85,7 @@ export function Home() {
             <span className="hidden sm:inline">LEADERBOARD</span>
           </button>
 
-          {authUser ? (
+          {accountProfile ? (
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => navigate(`/profile/${accountProfile?.username || currentUser.name.replace(' ', '')}`)}
@@ -142,7 +141,7 @@ export function Home() {
 
       {/* Main Hero and Action Grid */}
       <main className="max-w-6xl mx-auto px-6 py-12 flex flex-col justify-center items-center text-center flex-1 w-full">
-        {authUser && !accountProfile?.isCompleted && (
+        {accountProfile && !accountProfile.isSetupComplete && (
           <div className="mb-6 p-3 bg-black border border-[#F27D26] text-[#F27D26] font-mono text-xs flex flex-col sm:flex-row items-center justify-between gap-3 max-w-xl w-full shadow-[0_0_15px_rgba(242,125,38,0.15)]">
             <div className="flex items-center gap-2 text-left">
               <ShieldCheck className="w-4 h-4 text-[#F27D26] shrink-0" />

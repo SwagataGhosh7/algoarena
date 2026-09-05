@@ -413,10 +413,17 @@ interface MatchRecord {
   testScore: string;
   date: string;
   timestamp: string;
+  playback?: any;
 }
 
 interface UserProfileData {
+  uid?: string;
+  name?: string;
   username: string;
+  email?: string;
+  nationality?: string;
+  region?: string;
+  photoURL?: string;
   elo: number;
   rankTitle: string;
   peakElo: number;
