@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AQ.Ab8RN6KdpHCm8HGXQrrv0HVT3xx7kyj9EBN83-opmb4EHijwwg';
 
 // Initialize Gemini with standard User-Agent header
@@ -760,12 +760,20 @@ async function startServer() {
   const server = http.createServer(app);
   const io = new SocketIOServer(server, {
     cors: {
-      origin: '*',
+      origin: process.env.FRONTEND_URL || '*',
     },
   });
 
   globalIo = io;
 
+  const allowedOrigin = process.env.FRONTEND_URL || '*';
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', allowedOrigin);
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
   app.use(express.json());
 
   // In-memory state for rooms
@@ -1683,7 +1691,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
   }
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
   });
 }
 

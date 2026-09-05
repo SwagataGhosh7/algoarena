@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { User, UserProfileData } from './types';
 import { v4 as uuidv4 } from 'uuid';
+import { apiUrl } from './api';
 
 export interface UserAccountProfile {
   uid: string;
@@ -165,7 +166,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     // Sync with backend API
     try {
-      await fetch('/api/user-profile/save', {
+      await fetch(apiUrl('/api/user-profile/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(fullProfile),

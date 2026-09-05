@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
+import { apiUrl } from '../api';
 
 const STARTER_TEMPLATES: Record<string, string> = {
   javascript: `// AlgoArena JavaScript Solution
@@ -269,7 +270,7 @@ export function Arena() {
     setEvalResult(null);
     
     try {
-      const res = await fetch('/api/evaluate', {
+      const res = await fetch(apiUrl('/api/evaluate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

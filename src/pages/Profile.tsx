@@ -31,6 +31,7 @@ import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
 import { useStore } from '../store';
 import { UserProfileData, MatchRecord } from '../types';
+import { apiUrl } from '../api';
 
 export function Profile() {
   const { username } = useParams<{ username: string }>();
@@ -58,7 +59,7 @@ export function Profile() {
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/user-profile/${encodeURIComponent(operatorName)}`);
+      const res = await fetch(apiUrl(`/api/user-profile/${encodeURIComponent(operatorName)}`));
       if (res.ok) {
         const data: UserProfileData = await res.json();
         
@@ -93,7 +94,7 @@ export function Profile() {
     try {
       setIsAuditing(true);
       setAuditSuccess(false);
-      const res = await fetch('/api/analyze-dossier', {
+      const res = await fetch(apiUrl('/api/analyze-dossier'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: profile.username }),

@@ -23,6 +23,7 @@ import clsx from 'clsx';
 import { socket } from '../socket';
 import { useStore } from '../store';
 import { LeaderboardUser, LeaderboardResponse } from '../types';
+import { apiUrl } from '../api';
 
 interface LeaderboardProps {
   embedded?: boolean;
@@ -52,7 +53,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
       if (accountProfile?.username || currentUser?.name) params.set('currentUser', accountProfile?.username || currentUser.name);
 
-      const res = await fetch(`/api/leaderboard?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/leaderboard?${params.toString()}`));
       if (res.ok) {
         const data: LeaderboardResponse = await res.json();
         setLeaderboard(data.leaderboard);

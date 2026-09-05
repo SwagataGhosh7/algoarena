@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, Clock3, UserPlus, Users, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
+import { apiUrl } from '../api';
 
 type FriendStatus = 'none' | 'pending' | 'incoming' | 'friends' | 'self';
 
@@ -25,7 +26,7 @@ export function FriendActions({ username, compact = false, showProfileLink = tru
     }
 
     let cancelled = false;
-    fetch(`/api/friends?username=${encodeURIComponent(username)}&viewer=${encodeURIComponent(viewer)}`)
+    fetch(apiUrl(`/api/friends?username=${encodeURIComponent(username)}&viewer=${encodeURIComponent(viewer)}`))
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (!cancelled && data?.status) setStatus(data.status);
@@ -43,7 +44,7 @@ export function FriendActions({ username, compact = false, showProfileLink = tru
     }
     setLoading(true);
     try {
-      const res = await fetch('/api/friends/request', {
+      const res = await fetch(apiUrl('/api/friends/request'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: viewer, to: username }),
@@ -58,7 +59,7 @@ export function FriendActions({ username, compact = false, showProfileLink = tru
     if (!viewer) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/friends/respond', {
+      const res = await fetch(apiUrl('/api/friends/respond'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: viewer, requester: username, accept }),

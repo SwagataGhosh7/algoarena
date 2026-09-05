@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Swords, Users, Zap, CheckCircle2, Radio, ArrowUpRight, Activity } from 'lucide-react';
 import { motion } from 'motion/react';
 import { socket } from '../socket';
+import { apiUrl } from '../api';
 
 interface MatchEvent {
   id: string;
@@ -23,7 +24,7 @@ export function GlobalActivity() {
 
   const fetchGlobalTelemetry = async () => {
     try {
-      const res = await fetch('/api/global-activity');
+      const res = await fetch(apiUrl('/api/global-activity'));
       if (res.ok) {
         const data = await res.json();
         setActiveBattles(data.activeBattles ?? 0);
