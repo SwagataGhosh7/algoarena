@@ -7,9 +7,9 @@ import Editor from '@monaco-editor/react';
 import { 
   Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, 
   Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, 
-  Code2, Flag, Zap, ChevronUp, ChevronDown, Copy, CheckCheck, Plus, 
+  Code2, Flag, Zap, ChevronUp, ChevronDown, ChevronRight, Copy, CheckCheck, Plus, 
   Clock, Cpu, AlertCircle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope,
-  Layers, ZoomIn, ZoomOut, History, Share2
+  Layers, ZoomIn, ZoomOut, History, Share2, Columns, Maximize2, Minimize2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
@@ -30,78 +30,34 @@ import { SubmissionCodeViewer } from '../components/SubmissionCodeViewer';
 import { CountdownTimer, AmbientUrgencyBar, CriticalUrgencyBanner } from '../components/CountdownTimer';
 import { SocialShareModal, SocialShareButton } from '../components/SocialShareModal';
 import { triggerDuelVictoryConfetti, triggerQuickSuccessConfetti } from '../lib/confetti';
+import { AutoSaveStatusBadge, AutoSaveRecoveryBanner, AutoSaveState } from '../components/AutoSaveIndicator';
+import { getAutoSavedDraft, saveAutoSaveDraft, clearAutoSaveDraft } from '../lib/codeAutoSave';
+import { StreamSplitPane } from '../components/StreamSplitPane';
+import { OnlineStatusIndicator } from '../components/OnlineStatusIndicator';
 import { apiUrl } from '../api';
+import { 
+  getLanguageBoilerplate, 
+  isDefaultOrBoilerplateCode, 
+  getAutoBoilerplatePreference, 
+  setAutoBoilerplatePreference, 
+  getBoilerplateStylePreference, 
+  setBoilerplateStylePreference,
+  BoilerplateStyle 
+} from '../lib/languageBoilerplates';
+import { 
+  BoilerplateControls, 
+  BoilerplateNotificationBanner 
+} from '../components/BoilerplateControls';
 
 const STARTER_TEMPLATES: Record<string, string> = {
-  javascript: `// AlgoArena JavaScript Solution
-function solution(input) {
-  // Write your algorithmic logic here
-  return input;
-}
-`,
-  python: `# AlgoArena Python 3.11 Solution
-def solution(input_data):
-    # Write your algorithmic logic here
-    return input_data
-`,
-  cpp: `// AlgoArena C++ 20 Solution
-#include <iostream>
-#include <vector>
-#include <string>
-#include <algorithm>
-
-using namespace std;
-
-class Solution {
-public:
-    int solution(int input) {
-        // Write your algorithmic logic here
-        return input;
-    }
-};
-`,
-  typescript: `// AlgoArena TypeScript Solution
-function solution(input: any): any {
-  // Write your algorithmic logic here
-  return input;
-}
-`,
-  c: `// AlgoArena C (C17 / GCC) Solution
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-int solution(int input) {
-    // Write your algorithmic logic here
-    return input;
-}
-`,
-  java: `// AlgoArena Java (OpenJDK 21) Solution
-import java.util.*;
-
-public class Solution {
-    public static int solution(int input) {
-        // Write your algorithmic logic here
-        return input;
-    }
-}
-`,
-  go: `// AlgoArena Go 1.22 Solution
-package main
-
-import "fmt"
-
-func solution(input int) int {
-    // Write your algorithmic logic here
-    return input
-}
-`,
-  rust: `// AlgoArena Rust 2021 Solution
-fn solution(input: i32) -> i32 {
-    // Write your algorithmic logic here
-    input
-}
-`,
+  javascript: getLanguageBoilerplate('javascript'),
+  python: getLanguageBoilerplate('python'),
+  cpp: getLanguageBoilerplate('cpp'),
+  typescript: getLanguageBoilerplate('typescript'),
+  c: getLanguageBoilerplate('c'),
+  java: getLanguageBoilerplate('java'),
+  go: getLanguageBoilerplate('go'),
+  rust: getLanguageBoilerplate('rust'),
 };
 
 export function Arena() {
@@ -141,8 +97,14 @@ export function Arena() {
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   
+  // Check for auto-saved draft for this room/session (preserves progress across refreshes)
+  const initialDraft = getAutoSavedDraft(roomId);
+
   const initialLang = (() => {
     if (queryLang && STARTER_TEMPLATES[queryLang]) return queryLang;
+    if (initialDraft?.language && STARTER_TEMPLATES[initialDraft.language]) {
+      return initialDraft.language;
+    }
     try {
       const saved = localStorage.getItem('algoarena_preferred_language');
       if (saved && STARTER_TEMPLATES[saved]) return saved;
@@ -152,20 +114,62 @@ export function Arena() {
     return 'javascript';
   })();
   const [language, setLanguage] = useState(initialLang);
-  const [codeBuffers, setCodeBuffers] = useState<Record<string, string>>(() => ({
-    ...STARTER_TEMPLATES,
-    [initialLang]: STARTER_TEMPLATES[initialLang],
-  }));
-  const [code, setCode] = useState(STARTER_TEMPLATES[initialLang]);
+  const [codeBuffers, setCodeBuffers] = useState<Record<string, string>>(() => {
+    if (initialDraft?.codeBuffers) {
+      return {
+        ...STARTER_TEMPLATES,
+        ...initialDraft.codeBuffers,
+      };
+    }
+    return {
+      ...STARTER_TEMPLATES,
+      [initialLang]: STARTER_TEMPLATES[initialLang],
+    };
+  });
+  const [code, setCode] = useState<string>(() => {
+    if (initialDraft?.code) {
+      return initialDraft.code;
+    }
+    return STARTER_TEMPLATES[initialLang];
+  });
+  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveState>('saved');
+  const [autoInjectBoilerplate, setAutoInjectBoilerplate] = useState<boolean>(getAutoBoilerplatePreference);
+  const [boilerplateStyle, setBoilerplateStyle] = useState<BoilerplateStyle>(getBoilerplateStylePreference);
+  const [boilerplateNotice, setBoilerplateNotice] = useState<{
+    language: string;
+    previousCode?: string;
+  } | null>(null);
+  const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number | null>(
+    initialDraft ? initialDraft.timestamp : null
+  );
+  const [recoveredDraftInfo, setRecoveredDraftInfo] = useState<{
+    timestamp: number;
+    lineCount: number;
+    language: string;
+  } | null>(() => {
+    if (
+      initialDraft && 
+      initialDraft.code && 
+      initialDraft.code.trim() !== (STARTER_TEMPLATES[initialDraft.language] || '').trim()
+    ) {
+      return {
+        timestamp: initialDraft.timestamp,
+        lineCount: initialDraft.lineCount || initialDraft.code.split('\n').length,
+        language: initialDraft.language,
+      };
+    }
+    return null;
+  });
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evalResult, setEvalResult] = useState<EvaluationResult | null>(null);
   const [isRunningCode, setIsRunningCode] = useState(false);
   const [runResults, setRunResults] = useState<RunCodeResponse | null>(null);
-  const [activeConsoleTab, setActiveConsoleTab] = useState<'cases' | 'terminal' | 'submission'>('cases');
+  const [activeConsoleTab, setActiveConsoleTab] = useState<'cases' | 'split-stream' | 'terminal' | 'submission'>('cases');
   const [selectedCaseIdx, setSelectedCaseIdx] = useState<number>(0);
   const [customInput, setCustomInput] = useState('');
   const [customExpected, setCustomExpected] = useState('');
   const [isConsoleExpanded, setIsConsoleExpanded] = useState(true);
+  const [isConsoleMaximized, setIsConsoleMaximized] = useState(false);
   const [copiedConsole, setCopiedConsole] = useState(false);
   const [submissions, setSubmissions] = useState<{
     id: string;
@@ -216,6 +220,10 @@ export function Arena() {
   codeRef.current = code;
   const languageRef = useRef(language);
   languageRef.current = language;
+  const codeBuffersRef = useRef(codeBuffers);
+  codeBuffersRef.current = codeBuffers;
+  const roomIdRef = useRef(roomId);
+  roomIdRef.current = roomId;
   const timerSecondsRef = useRef(timerSeconds);
   timerSecondsRef.current = timerSeconds;
   const roomRef = useRef(room);
@@ -223,6 +231,103 @@ export function Arena() {
   const evalResultRef = useRef(evalResult);
   evalResultRef.current = evalResult;
   const victoryConfettiFiredRef = useRef(false);
+
+  // Debounced auto-save to localStorage preserving user progress
+  useEffect(() => {
+    setAutoSaveStatus('saving');
+    const timer = setTimeout(() => {
+      const saved = saveAutoSaveDraft({
+        roomId,
+        problemTitle: room?.problem?.title,
+        language,
+        code,
+        codeBuffers,
+      });
+      if (saved) {
+        setAutoSaveStatus('saved');
+        setLastSavedTimestamp(saved.timestamp);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [code, language, codeBuffers, roomId, room?.problem?.title]);
+
+  // Synchronously persist draft on beforeunload or tab hidden (prevents data loss on accidental reload/close)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      saveAutoSaveDraft({
+        roomId: roomIdRef.current,
+        problemTitle: roomRef.current?.problem?.title,
+        language: languageRef.current,
+        code: codeRef.current,
+        codeBuffers: codeBuffersRef.current,
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        saveAutoSaveDraft({
+          roomId: roomIdRef.current,
+          problemTitle: roomRef.current?.problem?.title,
+          language: languageRef.current,
+          code: codeRef.current,
+          codeBuffers: codeBuffersRef.current,
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // Keyboard shortcut Ctrl+S / Cmd+S manual save
+  const handleManualAutoSave = () => {
+    soundManager.playClick();
+    const saved = saveAutoSaveDraft({
+      roomId,
+      problemTitle: room?.problem?.title,
+      language,
+      code,
+      codeBuffers,
+    });
+    if (saved) {
+      setAutoSaveStatus('saved');
+      setLastSavedTimestamp(saved.timestamp);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleManualAutoSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [code, language, codeBuffers, roomId, room?.problem?.title]);
+
+  const handleDiscardRecoveredDraft = () => {
+    soundManager.playClick();
+    const template = STARTER_TEMPLATES[language] || STARTER_TEMPLATES.javascript;
+    setCode(template);
+    setCodeBuffers(prev => ({ ...prev, [language]: template }));
+    setRecoveredDraftInfo(null);
+    setAutoSaveStatus('saved');
+    saveAutoSaveDraft({
+      roomId,
+      problemTitle: room?.problem?.title,
+      language,
+      code: template,
+      codeBuffers: { ...codeBuffers, [language]: template },
+    });
+  };
 
   useEffect(() => {
     if (!roomId || !isProfileReady) {
@@ -504,20 +609,110 @@ export function Arena() {
       // ignore
     }
     // Cache current code under active language
-    setCodeBuffers(prev => ({ ...prev, [language]: code }));
+    const updatedBuffers = { ...codeBuffers, [language]: code };
+    setCodeBuffers(updatedBuffers);
     setLanguage(newLang);
-    // Load cached code or starter template for the new language
-    const nextCode = codeBuffers[newLang] !== undefined 
-      ? codeBuffers[newLang] 
-      : (STARTER_TEMPLATES[newLang] || STARTER_TEMPLATES.javascript);
+
+    // Determine target code:
+    const existingCode = updatedBuffers[newLang];
+    const isUntouchedOrBoilerplate = !existingCode || isDefaultOrBoilerplateCode(existingCode, newLang);
+
+    let nextCode: string;
+    if (autoInjectBoilerplate && isUntouchedOrBoilerplate) {
+      // Automatically inject language-appropriate boilerplate code
+      const boilerplateCode = getLanguageBoilerplate(newLang, room?.problem, boilerplateStyle);
+      nextCode = boilerplateCode;
+      updatedBuffers[newLang] = boilerplateCode;
+      setCodeBuffers(updatedBuffers);
+      setBoilerplateNotice({
+        language: newLang,
+        previousCode: existingCode,
+      });
+    } else if (existingCode !== undefined) {
+      nextCode = existingCode;
+      setBoilerplateNotice(null);
+    } else {
+      const boilerplateCode = getLanguageBoilerplate(newLang, room?.problem, boilerplateStyle);
+      nextCode = boilerplateCode;
+      updatedBuffers[newLang] = boilerplateCode;
+      setCodeBuffers(updatedBuffers);
+    }
+
     setCode(nextCode);
+    saveAutoSaveDraft({
+      roomId,
+      problemTitle: room?.problem?.title,
+      language: newLang,
+      code: nextCode,
+      codeBuffers: updatedBuffers,
+    });
+  };
+
+  const handleInjectBoilerplate = (style?: BoilerplateStyle) => {
+    soundManager.playClick();
+    const activeStyle = style || boilerplateStyle;
+    const freshBoilerplate = getLanguageBoilerplate(language, room?.problem, activeStyle);
+    const previous = code;
+    setCode(freshBoilerplate);
+    const updatedBuffers = { ...codeBuffers, [language]: freshBoilerplate };
+    setCodeBuffers(updatedBuffers);
+    setAutoSaveStatus('saved');
+    setBoilerplateNotice({
+      language,
+      previousCode: previous,
+    });
+    saveAutoSaveDraft({
+      roomId,
+      problemTitle: room?.problem?.title,
+      language,
+      code: freshBoilerplate,
+      codeBuffers: updatedBuffers,
+    });
+  };
+
+  const handleUndoBoilerplate = () => {
+    if (!boilerplateNotice?.previousCode) return;
+    soundManager.playClick();
+    const prev = boilerplateNotice.previousCode;
+    setCode(prev);
+    const updatedBuffers = { ...codeBuffers, [language]: prev };
+    setCodeBuffers(updatedBuffers);
+    setBoilerplateNotice(null);
+    saveAutoSaveDraft({
+      roomId,
+      problemTitle: room?.problem?.title,
+      language,
+      code: prev,
+      codeBuffers: updatedBuffers,
+    });
+  };
+
+  const handleToggleAutoBoilerplate = (enabled: boolean) => {
+    setAutoInjectBoilerplate(enabled);
+    setAutoBoilerplatePreference(enabled);
+  };
+
+  const handleBoilerplateStyleChange = (style: BoilerplateStyle) => {
+    setBoilerplateStyle(style);
+    setBoilerplateStylePreference(style);
   };
 
   const handleResetTemplate = () => {
     soundManager.playClick();
-    const template = STARTER_TEMPLATES[language] || STARTER_TEMPLATES.javascript;
+    const template = getLanguageBoilerplate(language, room?.problem, boilerplateStyle);
     setCode(template);
-    setCodeBuffers(prev => ({ ...prev, [language]: template }));
+    const updatedBuffers = { ...codeBuffers, [language]: template };
+    setCodeBuffers(updatedBuffers);
+    setRecoveredDraftInfo(null);
+    setBoilerplateNotice(null);
+    setAutoSaveStatus('saved');
+    saveAutoSaveDraft({
+      roomId,
+      problemTitle: room?.problem?.title,
+      language,
+      code: template,
+      codeBuffers: updatedBuffers,
+    });
   };
 
   const sendChat = (e: React.FormEvent) => {
@@ -1067,7 +1262,68 @@ export function Arena() {
                 </div>
 
                 {/* Actions: Bot Summon & Invite */}
-                <div className="space-y-2 pt-2 border-t border-white/10">
+                <div className="space-y-3 pt-2 border-t border-white/10">
+                  {/* Real-time Matchmaking Lobby Presence Indicators */}
+                  <div className="p-2.5 bg-black/70 border border-white/10 font-mono text-xs space-y-2">
+                    <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider flex items-center justify-between pb-1 border-b border-white/5">
+                      <span>LOBBY DUEL ROSTER</span>
+                      <span className="text-[#00FF00] font-bold">
+                        {opponents.length > 0 ? '2 / 2 CONNECTED' : '1 / 2 ACTIVE'}
+                      </span>
+                    </div>
+
+                    {/* Local User Row */}
+                    <div className="flex items-center justify-between py-0.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 bg-[#00FF00]/20 border border-[#00FF00] text-[#00FF00] flex items-center justify-center font-bold text-[9px]">
+                          {currentUser.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="text-white font-bold text-xs">{currentUser.name} (YOU)</span>
+                      </div>
+                      <OnlineStatusIndicator
+                        isOnline={true}
+                        status={me?.ready ? 'IN DUEL' : 'ONLINE'}
+                        showLabel={true}
+                        size="sm"
+                      />
+                    </div>
+
+                    {/* Challenger / Opponent Row */}
+                    <div className="flex items-center justify-between py-0.5 border-t border-white/5">
+                      {opponents.length > 0 ? (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 bg-amber-500/20 border border-amber-500 text-amber-400 flex items-center justify-center font-bold text-[9px]">
+                              {opponent?.name ? opponent.name.slice(0, 2).toUpperCase() : 'OP'}
+                            </div>
+                            <span className="text-white font-bold text-xs">{opponent?.name}</span>
+                          </div>
+                          <OnlineStatusIndicator
+                            isOnline={true}
+                            status={opponent?.ready ? 'IN DUEL' : 'ONLINE'}
+                            showLabel={true}
+                            size="sm"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 bg-zinc-900 border border-zinc-700 text-zinc-600 flex items-center justify-center font-bold text-[9px]">
+                              ?
+                            </div>
+                            <span className="text-zinc-500 font-bold text-xs">CHALLENGER SLOT</span>
+                          </div>
+                          <OnlineStatusIndicator
+                            isOnline={false}
+                            status="OFFLINE"
+                            showLabel={true}
+                            size="sm"
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+
                   {opponents.length === 0 ? (
                     <>
                       {isPracticeMode && (
@@ -1109,11 +1365,7 @@ export function Arena() {
                   ) : (
                     <div className="p-3 bg-black border border-white/15 font-mono text-xs space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-zinc-400 font-bold uppercase">OPPONENT:</span>
-                        <span className="text-white font-black uppercase">{opponent?.name}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-zinc-400 font-bold uppercase">STATUS:</span>
+                        <span className="text-zinc-400 font-bold uppercase">READY STATE:</span>
                         <span className={clsx("font-bold uppercase", opponent?.ready ? "text-[#00FF00]" : "text-amber-400")}>
                           {opponent?.ready ? 'READY FOR DUEL' : 'NOT READY YET'}
                         </span>
@@ -1318,6 +1570,14 @@ export function Arena() {
                   language === 'rust' ? 'Rust' : language
                 }</span>
               </span>
+
+              {/* Local Storage Auto-Save Status Badge */}
+              <AutoSaveStatusBadge
+                status={autoSaveStatus}
+                lastSavedTimestamp={lastSavedTimestamp}
+                onManualSave={handleManualAutoSave}
+                disabled={room?.status === 'finished'}
+              />
             </div>
             
             <div className="flex items-center gap-2 sm:gap-2.5">
@@ -1369,17 +1629,50 @@ export function Arena() {
 
               <div className="h-4 w-px bg-white/10 hidden sm:block" />
 
+              {/* Boilerplate Injection Controls */}
+              <BoilerplateControls
+                currentLanguage={language}
+                autoInjectEnabled={autoInjectBoilerplate}
+                onToggleAutoInject={handleToggleAutoBoilerplate}
+                boilerplateStyle={boilerplateStyle}
+                onChangeStyle={handleBoilerplateStyleChange}
+                onInjectBoilerplate={handleInjectBoilerplate}
+                disabled={room?.status === 'finished'}
+              />
+
               {/* Language Dropdown with Instant Syntax Highlighting */}
               <LanguageDropdown
                 currentLanguage={language}
                 onLanguageChange={handleLanguageChange}
                 onResetTemplate={handleResetTemplate}
                 codeBuffers={codeBuffers}
+                autoInjectBoilerplate={autoInjectBoilerplate}
+                onToggleAutoInject={handleToggleAutoBoilerplate}
                 disabled={room?.status === 'finished'}
               />
             </div>
           </div>
           
+          {/* Boilerplate Auto-Injection Notification with Undo */}
+          {boilerplateNotice && (
+            <BoilerplateNotificationBanner
+              language={boilerplateNotice.language}
+              onUndo={boilerplateNotice.previousCode ? handleUndoBoilerplate : undefined}
+              onDismiss={() => setBoilerplateNotice(null)}
+            />
+          )}
+
+          {/* Recovered Auto-Saved Draft Notification */}
+          {recoveredDraftInfo && (
+            <AutoSaveRecoveryBanner
+              timestamp={recoveredDraftInfo.timestamp}
+              lineCount={recoveredDraftInfo.lineCount}
+              language={recoveredDraftInfo.language}
+              onKeep={() => setRecoveredDraftInfo(null)}
+              onDiscard={handleDiscardRecoveredDraft}
+            />
+          )}
+
           {/* Critical Urgency Banner (< 60s) */}
           {room?.status === 'active' && (
             <CriticalUrgencyBanner
@@ -1409,6 +1702,7 @@ export function Arena() {
                 const nextVal = val || '';
                 setCode(nextVal);
                 setCodeBuffers(prev => ({ ...prev, [language]: nextVal }));
+                setAutoSaveStatus('saving');
               }}
               options={{
                 minimap: { enabled: showMinimap },
@@ -1789,7 +2083,12 @@ export function Arena() {
 
           {/* Interactive Test Runner & Console Drawer */}
           {isConsoleExpanded && (
-            <div className="h-64 sm:h-72 bg-[#080808] border-t border-white/10 flex flex-col shrink-0">
+            <div className={clsx(
+              "bg-[#080808] border-t border-white/10 flex flex-col shrink-0 transition-all duration-200",
+              isConsoleMaximized 
+                ? "h-96 sm:h-[420px]" 
+                : (activeConsoleTab === 'split-stream' ? "h-72 sm:h-80 md:h-96" : "h-64 sm:h-72")
+            )}>
               {/* Drawer Header & Tabs */}
               <div className="h-9 bg-[#111111] flex items-center justify-between px-3 shrink-0 border-b border-white/10 select-none">
                 <div className="flex items-center gap-1 sm:gap-2">
@@ -1812,6 +2111,32 @@ export function Arena() {
                           : "bg-rose-500/20 text-rose-400 border-rose-500/30"
                       )}>
                         {runResults.passedCount}/{runResults.totalCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      soundManager.playClick();
+                      setActiveConsoleTab('split-stream');
+                    }}
+                    className={clsx(
+                      "px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer",
+                      activeConsoleTab === 'split-stream' 
+                        ? "bg-[#080808] text-[#00FF00] border-t-2 border-[#00FF00]" 
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <Columns className="w-3.5 h-3.5" />
+                    <span>STDOUT / STDERR SPLIT</span>
+                    {runResults && (
+                      <span className="flex items-center gap-1">
+                        {runResults.results.some(r => r.stdout) && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#00FF00] shadow-[0_0_4px_#00FF00]" title="Has standard output" />
+                        )}
+                        {runResults.results.some(r => r.stderr || (!r.passed && (r.compileOutput || r.stderr))) && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_4px_#f43f5e] animate-pulse" title="Has error stream" />
+                        )}
                       </span>
                     )}
                   </button>
@@ -1870,6 +2195,17 @@ export function Arena() {
                     <Cpu className="w-3 h-3 text-[#00FF00]" />
                     {runResults?.executionEngine || 'SANDBOX: JUDGE0 CE'}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundManager.playClick();
+                      setIsConsoleMaximized(prev => !prev);
+                    }}
+                    className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                    title={isConsoleMaximized ? "Restore Console Height" : "Maximize Console Height"}
+                  >
+                    {isConsoleMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  </button>
                   <button
                     onClick={() => setIsConsoleExpanded(false)}
                     className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
@@ -2068,29 +2404,64 @@ export function Arena() {
                               </div>
                             </div>
 
-                            {/* Stdout / Stderr Diagnostic logs */}
+                            {/* Stdout / Stderr Split-Pane View for the Active Test Case */}
                             {result && (result.stdout || result.stderr || result.compileOutput) && (
-                              <div className="bg-[#050505] border border-white/10 p-2.5 space-y-1 text-[11px]">
-                                {result.stdout && (
-                                  <div>
-                                    <div className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-0.5">
-                                      STANDARD OUTPUT (PRINT LOGS)
+                              <div className="bg-[#050505] border border-white/10 p-2.5 space-y-2 text-[11px]">
+                                <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-[10px] font-mono">
+                                  <span className="text-zinc-300 font-bold uppercase flex items-center gap-1.5">
+                                    <Columns className="w-3.5 h-3.5 text-[#00FF00]" />
+                                    <span>CASE {selectedCaseIdx + 1} STREAMS (SPLIT PANE)</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      soundManager.playClick();
+                                      setActiveConsoleTab('split-stream');
+                                    }}
+                                    className="text-[#00FF00] hover:text-[#00FF00]/80 flex items-center gap-1 cursor-pointer font-bold transition-colors"
+                                  >
+                                    <span>EXPAND FULL SPLIT-PANE</span>
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {/* Standard Output Pane */}
+                                  <div className="bg-black/90 border border-white/10 p-2 flex flex-col min-h-16">
+                                    <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider mb-1">
+                                      <span className="text-[#00FF00] flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#00FF00]" />
+                                        STDOUT
+                                      </span>
+                                      <span className="text-zinc-500">
+                                        {result.stdout ? `${result.stdout.trim().split('\n').length} lines` : 'Empty'}
+                                      </span>
                                     </div>
-                                    <pre className="text-zinc-300 font-mono text-[11px] whitespace-pre-wrap max-h-16 overflow-y-auto">
-                                      {result.stdout}
+                                    <pre className="text-zinc-300 font-mono text-[11px] whitespace-pre-wrap max-h-24 overflow-y-auto custom-scrollbar">
+                                      {result.stdout ? result.stdout.trim() : (
+                                        <span className="text-zinc-600 italic">No standard output generated</span>
+                                      )}
                                     </pre>
                                   </div>
-                                )}
-                                {(result.stderr || result.compileOutput) && (
-                                  <div className="pt-1 border-t border-white/5">
-                                    <div className="text-[9px] font-black text-rose-400 uppercase tracking-wider mb-0.5">
-                                      STANDARD ERROR / DIAGNOSTICS
+
+                                  {/* Standard Error Pane */}
+                                  <div className="bg-black/90 border border-rose-950/40 p-2 flex flex-col min-h-16">
+                                    <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider mb-1">
+                                      <span className="text-rose-400 flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                        STDERR / DIAGNOSTICS
+                                      </span>
+                                      <span className="text-zinc-500">
+                                        {(result.stderr || result.compileOutput) ? 'Faults detected' : 'Clean (0)'}
+                                      </span>
                                     </div>
-                                    <pre className="text-rose-400 font-mono text-[11px] whitespace-pre-wrap max-h-16 overflow-y-auto">
-                                      {result.stderr || result.compileOutput}
+                                    <pre className="text-rose-400 font-mono text-[11px] whitespace-pre-wrap max-h-24 overflow-y-auto custom-scrollbar">
+                                      {(result.stderr || result.compileOutput) ? (result.stderr || result.compileOutput)?.trim() : (
+                                        <span className="text-[#00FF00]/80 italic">Clean error stream</span>
+                                      )}
                                     </pre>
                                   </div>
-                                )}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2098,6 +2469,18 @@ export function Arena() {
                       })()
                     )}
                   </div>
+                )}
+
+                {/* Dedicated Full Split-Pane Standard Output & Error View */}
+                {activeConsoleTab === 'split-stream' && (
+                  <StreamSplitPane
+                    runResults={runResults}
+                    selectedCaseIdx={selectedCaseIdx}
+                    onSelectCaseIdx={setSelectedCaseIdx}
+                    onRunCode={runCode}
+                    isRunning={isRunningCode}
+                    language={language}
+                  />
                 )}
 
                 {activeConsoleTab === 'terminal' && (

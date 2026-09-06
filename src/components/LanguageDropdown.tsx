@@ -12,6 +12,7 @@ import {
   Zap
 } from 'lucide-react';
 import { soundManager } from '../lib/soundEffects';
+import { LANGUAGE_BOILERPLATE_METAS } from '../lib/languageBoilerplates';
 
 export interface LanguageOption {
   id: string;
@@ -160,6 +161,8 @@ export interface LanguageDropdownProps {
   onLanguageChange: (newLanguage: string) => void;
   onResetTemplate?: () => void;
   codeBuffers?: Record<string, string>;
+  autoInjectBoilerplate?: boolean;
+  onToggleAutoInject?: (enabled: boolean) => void;
   disabled?: boolean;
   compact?: boolean;
 }
@@ -169,6 +172,8 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
   onLanguageChange,
   onResetTemplate,
   codeBuffers,
+  autoInjectBoilerplate,
+  onToggleAutoInject,
   disabled = false,
   compact = false,
 }) => {
@@ -455,8 +460,13 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
                           )}
                         </div>
 
-                        <div className="text-[11px] text-zinc-400 truncate mt-0.5">
-                          {lang.compiler}
+                        <div className="text-[11px] text-zinc-400 truncate mt-0.5 flex items-center gap-2">
+                          <span>{lang.compiler}</span>
+                          {LANGUAGE_BOILERPLATE_METAS[lang.id]?.features?.[0] && (
+                            <span className="text-[9px] text-emerald-400/80 font-mono hidden sm:inline">
+                              • {LANGUAGE_BOILERPLATE_METAS[lang.id].features[0]}
+                            </span>
+                          )}
                         </div>
 
                         {bufferInfo && (
@@ -489,26 +499,47 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
             )}
           </div>
 
-          {/* Footer Bar: Template Reset & Buffer Info */}
-          <div className="p-2.5 bg-[#141414] border-t border-white/10 flex items-center justify-between gap-2">
-            {onResetTemplate && (
-              <button
-                type="button"
-                onClick={() => {
-                  soundManager.playClick();
-                  onResetTemplate();
-                  setIsOpen(false);
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10 transition-colors"
-                title="Restore default starter template code for the active language"
-              >
-                <RotateCcw className="w-3 h-3 text-amber-400" />
-                <span>Reset {activeLang.name} Template</span>
-              </button>
-            )}
+          {/* Footer Bar: Template Reset, Auto-Boilerplate Toggle & Buffer Info */}
+          <div className="p-2.5 bg-[#141414] border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {onResetTemplate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundManager.playClick();
+                    onResetTemplate();
+                    setIsOpen(false);
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-mono text-zinc-400 hover:text-white hover:bg-white/10 border border-white/10 transition-colors"
+                  title="Restore default starter template code for the active language"
+                >
+                  <RotateCcw className="w-3 h-3 text-amber-400" />
+                  <span>Reset {activeLang.name}</span>
+                </button>
+              )}
 
-            <span className="text-[10px] font-mono text-zinc-400 ml-auto hidden sm:inline">
-              Buffers auto-cached • ESC to close
+              {onToggleAutoInject && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundManager.playClick();
+                    onToggleAutoInject(!autoInjectBoilerplate);
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border transition-colors ${
+                    autoInjectBoilerplate
+                      ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40'
+                      : 'bg-black/40 text-zinc-500 border-white/10 hover:text-zinc-300'
+                  }`}
+                  title="Toggle automatic boilerplate injection on language switch"
+                >
+                  <Sparkles className={`w-2.5 h-2.5 ${autoInjectBoilerplate ? 'text-[#00FF00]' : 'text-zinc-500'}`} />
+                  <span>Auto-Boilerplate: {autoInjectBoilerplate ? 'ON' : 'OFF'}</span>
+                </button>
+              )}
+            </div>
+
+            <span className="text-[10px] font-mono text-zinc-500 ml-auto hidden md:inline">
+              ESC to close
             </span>
           </div>
         </div>

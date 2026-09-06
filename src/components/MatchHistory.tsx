@@ -25,16 +25,19 @@ import {
   LayoutGrid,
   List,
   Flame,
-  Terminal
+  Terminal,
+  GitCompare
 } from 'lucide-react';
 import { MatchRecord } from '../types';
 import { formatRelativeTime, formatFullTimestamp } from '../lib/matchHistoryStorage';
+import { SolutionDiffViewer } from './SolutionDiffViewer';
 
 interface MatchHistoryProps {
   matches?: MatchRecord[];
   username?: string;
   onSelectPlayback?: (match: MatchRecord) => void;
   onSelectReview?: (match: MatchRecord) => void;
+  onSelectDiff?: (match: MatchRecord) => void;
   onSeedSample?: () => void;
 }
 
@@ -66,13 +69,14 @@ function getLanguageBadge(language?: string) {
   return { name: language || 'TypeScript', bg: 'bg-zinc-800 text-zinc-300 border-white/20' };
 }
 
-export function MatchHistory({ matches = [], username, onSelectPlayback, onSelectReview, onSeedSample }: MatchHistoryProps) {
+export function MatchHistory({ matches = [], username, onSelectPlayback, onSelectReview, onSelectDiff, onSeedSample }: MatchHistoryProps) {
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('ALL');
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('NEWEST');
   const [viewMode, setViewMode] = useState<ViewMode>('BOTH');
   const [selectedMatch, setSelectedMatch] = useState<MatchRecord | null>(null);
+  const [diffMatch, setDiffMatch] = useState<MatchRecord | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Parse helper for durations like "12m 30s", "03:45", "Forfeited"
@@ -467,6 +471,33 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
                       {match.testScore} Pass
                     </span>
                   </div>
+
+                  {/* Card Quick Action Bar */}
+                  <div className="flex items-center justify-between pt-2 mt-1.5 border-t border-white/5" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSelectDiff) onSelectDiff(match);
+                        setDiffMatch(match);
+                      }}
+                      className="px-2 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-blue-500/40 hover:border-blue-400 text-[9px] font-mono font-bold uppercase flex items-center gap-1 transition-all cursor-pointer shadow-[0_0_8px_rgba(59,130,246,0.15)]"
+                      title="View side-by-side solution diff"
+                    >
+                      <GitCompare className="w-2.5 h-2.5 text-blue-400" />
+                      <span>VIEW DIFF</span>
+                    </button>
+                    {onSelectPlayback && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectPlayback(match)}
+                        className="px-2 py-1 bg-black hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/10 text-[9px] font-mono font-bold uppercase flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Replay typed keystrokes"
+                      >
+                        <Code2 className="w-2.5 h-2.5 text-[#00FF00]" />
+                        <span>REPLAY</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -489,12 +520,13 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
                 <th className="py-2.5 px-3">LANGUAGE USED</th>
                 <th className="py-2.5 px-3">TESTS</th>
                 <th className="py-2.5 px-3 text-right">RATING DELTA</th>
+                <th className="py-2.5 px-3 text-right">ACTION</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 font-mono">
               {processedMatches.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-zinc-500 uppercase tracking-widest text-[11px]">
+                  <td colSpan={10} className="py-12 text-center text-zinc-500 uppercase tracking-widest text-[11px]">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <Swords className="w-8 h-8 text-zinc-700 animate-pulse" />
                       <div>
@@ -661,6 +693,22 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
                           )}
                         </div>
                       </td>
+
+                      {/* View Diff Action Button */}
+                      <td className="py-3 px-3 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onSelectDiff) onSelectDiff(match);
+                            setDiffMatch(match);
+                          }}
+                          className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-blue-500/40 hover:border-blue-400 font-mono text-[9px] font-black uppercase inline-flex items-center gap-1 transition-all cursor-pointer shadow-[0_0_8px_rgba(59,130,246,0.15)]"
+                          title="Compare solution vs opponent or optimal code"
+                        >
+                          <GitCompare className="w-2.5 h-2.5 text-blue-400" />
+                          <span>DIFF</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -738,6 +786,17 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              onClick={() => {
+                if (onSelectDiff) onSelectDiff(selectedMatch);
+                setDiffMatch(selectedMatch);
+              }}
+              className="px-3 py-1.5 bg-blue-600/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 hover:bg-blue-600/30 hover:border-blue-400 hover:text-white transition-all cursor-pointer shadow-[0_0_12px_rgba(59,130,246,0.2)]"
+            >
+              <GitCompare className="w-3.5 h-3.5 text-blue-400" />
+              VIEW SOLUTION DIFF
+            </button>
+
             {onSelectPlayback && (
               <button
                 onClick={() => onSelectPlayback(selectedMatch)}
@@ -774,6 +833,30 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
                 </>
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Side-by-Side Solution Diff Modal */}
+      {diffMatch && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+          onClick={() => setDiffMatch(null)}
+        >
+          <div 
+            className="w-full max-w-6xl h-[88vh] flex flex-col bg-[#0a0a0a] border border-blue-500/40 shadow-[0_0_50px_rgba(59,130,246,0.25)] rounded-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SolutionDiffViewer
+              userCode={diffMatch.code || '// User submitted solution code was not recorded for this session.'}
+              userLanguage={diffMatch.language || 'typescript'}
+              userName={username ? `${username}'s Solution` : 'Your Solution'}
+              opponentCode={diffMatch.opponentCode || ''}
+              opponentLanguage={diffMatch.language || 'typescript'}
+              opponentName={diffMatch.opponent || 'Opponent'}
+              expectedSolution={diffMatch.optimalSolution || ''}
+              onClose={() => setDiffMatch(null)}
+            />
           </div>
         </div>
       )}

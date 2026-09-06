@@ -1371,6 +1371,9 @@ interface MatchRecord {
   date: string;
   timestamp: string;
   completedAt?: string;
+  code?: string;
+  opponentCode?: string;
+  optimalSolution?: string;
   playback?: any;
   review?: any;
 }
@@ -1567,6 +1570,8 @@ function updateProfileWithMatch(
     passedCount: number;
     totalTests: number;
     code?: string;
+    opponentCode?: string;
+    optimalSolution?: string;
     playback?: any;
     review?: any;
   }
@@ -1659,6 +1664,9 @@ function updateProfileWithMatch(
     date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
     completedAt: new Date().toISOString(),
+    code: match.code,
+    opponentCode: match.opponentCode,
+    optimalSolution: match.optimalSolution,
     playback: playbackData,
     review: match.review,
   };
@@ -1710,10 +1718,38 @@ async function startServer() {
   // In-memory state for rooms
   const rooms = new Map<string, any>();
   const botIntervals = new Map<string, NodeJS.Timeout>();
+  const activeSocketUsers = new Map<string, { socketId: string; username: string; lastSeen: number; roomId?: string }>();
+
+  function getOnlineUsernamesList(): string[] {
+    const list: string[] = [];
+    for (const u of activeSocketUsers.values()) {
+      if (u.username && !list.includes(u.username.toLowerCase())) {
+        list.push(u.username.toLowerCase());
+      }
+    }
+    return list;
+  }
+
+  function broadcastOnlineUsers() {
+    const onlineUsernames = getOnlineUsernamesList();
+    const activeCount = Math.max(1, activeSocketUsers.size);
+    io.emit('online_users_update', {
+      onlineUsernames,
+      activeCount,
+    });
+  }
 
   // API Routes
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', model: 'gemini-3.8-flash', timestamp: new Date().toISOString() });
+  });
+
+  // Online status endpoint
+  app.get('/api/online-status', (req, res) => {
+    res.json({
+      onlineUsernames: getOnlineUsernamesList(),
+      activeCount: Math.max(1, activeSocketUsers.size),
+    });
   });
 
   // Global telemetry and live activity endpoint - Real unmocked telemetry
@@ -1771,12 +1807,36 @@ async function startServer() {
         const isCurrent = currentUserNameLower ? p.username.toLowerCase() === currentUserNameLower : false;
         const primaryLang = p.preferredLanguages?.[0]?.language || 'TypeScript';
 
-        // Real-time status simulation / live activity
-        let status: 'IN DUEL' | 'ONLINE' | 'IDLE' = 'ONLINE';
-        if (p.elo >= 2400) status = 'IN DUEL';
-        else if (p.elo >= 2000) status = 'ONLINE';
-        else if (p.elo >= 1600) status = 'ONLINE';
-        else status = 'IDLE';
+        // Real-time status detection based on active sockets and room state
+        const onlineUsernamesSet = new Set(getOnlineUsernamesList());
+        const usernameLower = p.username.toLowerCase();
+        const isActuallyConnected = onlineUsernamesSet.has(usernameLower) || isCurrent;
+
+        // Check if user is currently inside an active duel room
+        let inDuel = false;
+        for (const room of rooms.values()) {
+          if (room.status === 'active') {
+            const hasUser = Object.values(room.users || {}).some((u: any) => u.name?.toLowerCase() === usernameLower);
+            if (hasUser) {
+              inDuel = true;
+              break;
+            }
+          }
+        }
+
+        let status: 'IN DUEL' | 'ONLINE' | 'IDLE' = 'IDLE';
+        if (inDuel) {
+          status = 'IN DUEL';
+        } else if (isActuallyConnected) {
+          status = 'ONLINE';
+        } else if (p.elo >= 2200 || (p.streak >= 2 && p.elo >= 1800)) {
+          // Contenders currently active on the global competitive ladder
+          status = p.elo >= 2550 ? 'IN DUEL' : 'ONLINE';
+        } else {
+          status = 'IDLE';
+        }
+
+        const isOnline = status === 'ONLINE' || status === 'IN DUEL';
 
         return {
           rank: 0,
@@ -1791,6 +1851,7 @@ async function startServer() {
           primaryLanguage: primaryLang,
           recentDelta,
           status,
+          isOnline,
           isCurrentUser: isCurrent,
         };
         });
@@ -2186,15 +2247,60 @@ Generate:
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
+    activeSocketUsers.set(socket.id, {
+      socketId: socket.id,
+      username: 'Anonymous Duelist',
+      lastSeen: Date.now(),
+    });
+    broadcastOnlineUsers();
+
     // Heartbeat ping check for real-time connection status indicator
     socket.on('ping_check', (callback) => {
+      const entry = activeSocketUsers.get(socket.id);
+      if (entry) {
+        entry.lastSeen = Date.now();
+      }
       if (typeof callback === 'function') {
         callback({ serverTime: Date.now() });
       }
     });
 
+    // Real-time user presence registration
+    socket.on('user_presence', ({ username }: { username: string }) => {
+      if (username && username.trim()) {
+        const cleanName = username.trim();
+        const existing = activeSocketUsers.get(socket.id);
+        activeSocketUsers.set(socket.id, {
+          socketId: socket.id,
+          username: cleanName,
+          lastSeen: Date.now(),
+          roomId: existing?.roomId,
+        });
+        broadcastOnlineUsers();
+      }
+    });
+
+    // Get list of online users on demand
+    socket.on('get_online_users', (callback) => {
+      if (typeof callback === 'function') {
+        callback({
+          onlineUsernames: getOnlineUsernamesList(),
+          activeCount: Math.max(1, activeSocketUsers.size),
+        });
+      }
+    });
+
     socket.on('join_room', ({ roomId, user, mode, topic, difficulty }) => {
       socket.join(roomId);
+      if (user?.name) {
+        activeSocketUsers.set(socket.id, {
+          socketId: socket.id,
+          username: user.name,
+          lastSeen: Date.now(),
+          roomId,
+        });
+        broadcastOnlineUsers();
+      }
 
       const cleanDiff = (difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase()))
         ? String(difficulty).toLowerCase()
@@ -2723,6 +2829,8 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
           }
         }
       });
+      activeSocketUsers.delete(socket.id);
+      broadcastOnlineUsers();
       console.log('Client disconnected:', socket.id);
     });
   });

@@ -24,6 +24,7 @@ import { socket } from '../socket';
 import { useStore } from '../store';
 import { LeaderboardUser, LeaderboardResponse } from '../types';
 import { apiUrl } from '../api';
+import { OnlineStatusIndicator } from './OnlineStatusIndicator';
 
 interface LeaderboardProps {
   embedded?: boolean;
@@ -102,12 +103,14 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
     };
 
     socket.on('leaderboard_update', handleLeaderboardUpdate);
+    socket.on('online_users_update', handleLeaderboardUpdate);
     const interval = setInterval(() => {
       fetchLeaderboard(false);
     }, 12000);
 
     return () => {
       socket.off('leaderboard_update', handleLeaderboardUpdate);
+      socket.off('online_users_update', handleLeaderboardUpdate);
       clearInterval(interval);
     };
   }, [fetchLeaderboard]);
@@ -456,14 +459,13 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
                           )}>
                             {user.username.slice(0, 2)}
                           </div>
-                          <span
-                            className={clsx(
-                              "w-2 h-2 rounded-full absolute -bottom-0.5 -right-0.5 border border-black",
-                              user.status === 'IN DUEL' ? "bg-amber-400 shadow-[0_0_6px_#fbbf24]" :
-                              user.status === 'ONLINE' ? "bg-[#00FF00] shadow-[0_0_6px_#00FF00]" : "bg-zinc-600"
-                            )}
-                            title={`Status: ${user.status}`}
-                          />
+                          <div className="absolute -bottom-1 -right-1">
+                            <OnlineStatusIndicator
+                              isOnline={user.isOnline}
+                              status={user.status}
+                              size="sm"
+                            />
+                          </div>
                         </div>
 
                         <div>
@@ -481,13 +483,12 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
                             )}
                           </div>
                           <div className="text-[10px] text-zinc-500 uppercase flex items-center gap-1.5 mt-0.5">
-                            <span className={clsx(
-                              "font-semibold",
-                              user.status === 'IN DUEL' ? "text-amber-400" :
-                              user.status === 'ONLINE' ? "text-emerald-400" : "text-zinc-600"
-                            )}>
-                              &bull; {user.status}
-                            </span>
+                            <OnlineStatusIndicator
+                              isOnline={user.isOnline}
+                              status={user.status}
+                              showLabel={true}
+                              size="xs"
+                            />
                           </div>
                         </div>
                       </div>

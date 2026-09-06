@@ -95,6 +95,60 @@ export function getSampleBenchmarkMatches(operatorName = 'Operator'): MatchRecor
   }
   return islands;
 }`,
+      optimalSolution: `// Optimal Canonical Solution (Linear O(M*N) BFS with queue boundary tracking)
+function numIslands(grid: string[][]): number {
+  if (!grid || grid.length === 0 || grid[0].length === 0) return 0;
+  const rows = grid.length;
+  const cols = grid[0].length;
+  let count = 0;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (grid[r][c] === '1') {
+        count++;
+        grid[r][c] = '0';
+        const queue: [number, number][] = [[r, c]];
+        let head = 0;
+        while (head < queue.length) {
+          const [cr, cc] = queue[head++];
+          for (const [dr, dc] of dirs) {
+            const nr = cr + dr;
+            const nc = cc + dc;
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] === '1') {
+              grid[nr][nc] = '0';
+              queue.push([nr, nc]);
+            }
+          }
+        }
+      }
+    }
+  }
+  return count;
+}`,
+      opponentCode: `// AlgoArena Bot [DSA Mentor Solution]
+function numIslands(grid: string[][]): number {
+  if (!grid || !grid.length) return 0;
+  let total = 0;
+  const visit = (r: number, c: number): void => {
+    if (r >= 0 && r < grid.length && c >= 0 && c < grid[0].length && grid[r][c] === '1') {
+      grid[r][c] = '#'; // in-place sentinel flag
+      visit(r + 1, c);
+      visit(r - 1, c);
+      visit(r, c + 1);
+      visit(r, c - 1);
+    }
+  };
+  for (let i = 0; i < grid.length; i++) {
+    for (let j = 0; j < grid[0].length; j++) {
+      if (grid[i][j] === '1') {
+        total++;
+        visit(i, j);
+      }
+    }
+  }
+  return total;
+}`,
     },
     {
       id: 'MT-7215',
@@ -131,6 +185,54 @@ export function getSampleBenchmarkMatches(operatorName = 'Operator'): MatchRecor
                 queue.append(neighbor)
                 
     return completed == numCourses`,
+      optimalSolution: `# Optimal Canonical Solution: Kahn's Algorithm (O(V + E) Time & Space)
+from collections import deque
+
+def canFinish(numCourses: int, prerequisites: list[list[int]]) -> bool:
+    indegree = [0] * numCourses
+    graph = [[] for _ in range(numCourses)]
+    
+    for course, prereq in prerequisites:
+        graph[prereq].append(course)
+        indegree[course] += 1
+        
+    queue = deque([u for u in range(numCourses) if indegree[u] == 0])
+    processed = 0
+    
+    while queue:
+        curr = queue.popleft()
+        processed += 1
+        for neighbor in graph[curr]:
+            indegree[neighbor] -= 1
+            if indegree[neighbor] == 0:
+                queue.append(neighbor)
+                
+    return processed == numCourses`,
+      opponentCode: `# CyberRonin's DFS 3-State Cycle Detection Solution
+def canFinish(numCourses: int, prerequisites: list[list[int]]) -> bool:
+    graph = [[] for _ in range(numCourses)]
+    for dest, src in prerequisites:
+        graph[src].append(dest)
+        
+    # State: 0 = unvisited, 1 = visiting (in recursion stack), 2 = visited
+    state = [0] * numCourses
+    
+    def has_cycle(u: int) -> bool:
+        if state[u] == 1:
+            return True
+        if state[u] == 2:
+            return False
+        state[u] = 1
+        for v in graph[u]:
+            if has_cycle(v):
+                return True
+        state[u] = 2
+        return False
+        
+    for i in range(numCourses):
+        if state[i] == 0 and has_cycle(i):
+            return False
+    return True`,
     },
     {
       id: 'MT-6104',
@@ -153,6 +255,34 @@ public:
         TreeNode* temp = root->left;
         root->left = invertTree(root->right);
         root->right = invertTree(temp);
+        return root;
+    }
+};`,
+      optimalSolution: `// Canonical Optimal Invert Tree (Iterative Queue-based BFS to guard call stack)
+class Solution {
+public:
+    TreeNode* invertTree(TreeNode* root) {
+        if (!root) return nullptr;
+        std::queue<TreeNode*> q;
+        q.push(root);
+        while (!q.empty()) {
+            TreeNode* curr = q.front();
+            q.pop();
+            std::swap(curr->left, curr->right);
+            if (curr->left) q.push(curr->left);
+            if (curr->right) q.push(curr->right);
+        }
+        return root;
+    }
+};`,
+      opponentCode: `// QuantumCoder's Pointer Swapping
+class Solution {
+public:
+    TreeNode* invertTree(TreeNode* root) {
+        if (root == nullptr) return nullptr;
+        std::swap(root->left, root->right);
+        invertTree(root->left);
+        invertTree(root->right);
         return root;
     }
 };`,
@@ -181,6 +311,29 @@ public:
         seen[num] = i
     }
     return nil
+}`,
+      optimalSolution: `// Canonical Hash Map Solution: O(N) Time, O(N) Space
+func twoSum(nums []int, target int) []int {
+    m := make(map[int]int, len(nums))
+    for i, x := range nums {
+        if j, ok := m[target-x]; ok {
+            return []int{j, i}
+        }
+        m[x] = i
+    }
+    return []int{}
+}`,
+      opponentCode: `// ByteHacker's Implementation
+func twoSum(nums []int, target int) []int {
+    indices := make(map[int]int)
+    for index, val := range nums {
+        diff := target - val
+        if prevIndex, exists := indices[diff]; exists {
+            return []int{prevIndex, index}
+        }
+        indices[val] = index
+    }
+    return []int{0, 0}
 }`,
     }
   ];
@@ -261,6 +414,8 @@ export async function recordCompletedMatch(
           passedCount: parseInt(record.testScore?.split('/')[0] || '5', 10),
           totalTests: parseInt(record.testScore?.split('/')[1] || '5', 10),
           code: (record as any).code,
+          opponentCode: record.opponentCode,
+          optimalSolution: record.optimalSolution,
           playback: record.playback,
           review: record.review,
         },

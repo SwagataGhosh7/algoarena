@@ -190,6 +190,8 @@ export interface MatchRecord {
   timestamp: string;
   completedAt?: string;
   code?: string;
+  opponentCode?: string;
+  optimalSolution?: string;
   playback?: CodePlaybackData;
   review?: CodeReviewData;
 }
@@ -241,6 +243,7 @@ export interface LeaderboardUser {
   primaryLanguage: string;
   recentDelta: string;
   status: 'IN DUEL' | 'ONLINE' | 'IDLE';
+  isOnline?: boolean;
   isCurrentUser?: boolean;
 }
 
