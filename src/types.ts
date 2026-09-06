@@ -188,6 +188,8 @@ export interface MatchRecord {
   testScore: string;
   date: string;
   timestamp: string;
+  completedAt?: string;
+  code?: string;
   playback?: CodePlaybackData;
   review?: CodeReviewData;
 }

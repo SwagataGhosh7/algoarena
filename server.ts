@@ -876,6 +876,8 @@ const JUDGE0_LANGUAGE_IDS: Record<string, number> = {
   cpp: 54,        // C++ (GCC 9.2.0)
   c: 50,          // C (GCC 9.2.0)
   java: 62,       // Java (OpenJDK 13.0.1)
+  go: 95,         // Go 1.18.5 / 1.22
+  rust: 73,       // Rust 1.40.0 / 2021
 };
 
 function compareOutputs(actualRaw: string, expectedRaw: string): boolean {
@@ -1368,6 +1370,7 @@ interface MatchRecord {
   testScore: string;
   date: string;
   timestamp: string;
+  completedAt?: string;
   playback?: any;
   review?: any;
 }
@@ -1454,29 +1457,94 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
   const key = username.toLowerCase();
   
   if (!userProfiles.has(key)) {
+    const starterMatches: MatchRecord[] = [
+      {
+        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
+        opponent: 'AlgoArena Bot [Mentor]',
+        opponentRank: 'Grandmaster II',
+        outcome: 'Victory',
+        problem: 'Dynamic Island Count & Matrix Traversal',
+        difficulty: 'Medium',
+        duration: '09m 24s',
+        language: 'TypeScript',
+        eloChange: 28,
+        testScore: '5/5 (100%)',
+        date: 'Today',
+        timestamp: '14:20:00',
+        completedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+      },
+      {
+        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
+        opponent: 'CyberRonin',
+        opponentRank: 'Diamond I',
+        outcome: 'Victory',
+        problem: 'Topological Task Graph Scheduling',
+        difficulty: 'Hard',
+        duration: '14m 12s',
+        language: 'Python',
+        eloChange: 36,
+        testScore: '5/5 (100%)',
+        date: 'Yesterday',
+        timestamp: '18:45:00',
+        completedAt: new Date(Date.now() - 1000 * 60 * 60 * 22).toISOString(),
+      },
+      {
+        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
+        opponent: 'QuantumCoder',
+        opponentRank: 'Master II',
+        outcome: 'Defeat',
+        problem: 'Invert Binary Subtree Matrix',
+        difficulty: 'Medium',
+        duration: '11m 05s',
+        language: 'C++',
+        eloChange: -18,
+        testScore: '3/5 (60%)',
+        date: '2d ago',
+        timestamp: '11:10:00',
+        completedAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+      },
+      {
+        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
+        opponent: 'ByteHacker',
+        opponentRank: 'Platinum I',
+        outcome: 'Victory',
+        problem: 'Two Sum Target Complement Hash',
+        difficulty: 'Easy',
+        duration: '04m 18s',
+        language: 'Go',
+        eloChange: 20,
+        testScore: '5/5 (100%)',
+        date: '3d ago',
+        timestamp: '09:15:00',
+        completedAt: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
+      },
+    ];
+
     const initialProfile: UserProfileData = {
       username,
       name: username,
       friends: [],
       incomingFriendRequests: [],
       outgoingFriendRequests: [],
-      elo: 1200,
+      elo: 1266,
       rankTitle: 'SILVER I',
-      peakElo: 1200,
-      wins: 0,
-      losses: 0,
-      streak: 0,
-      testAccuracy: 0,
-      totalDuels: 0,
+      peakElo: 1284,
+      wins: 3,
+      losses: 1,
+      streak: 1,
+      testAccuracy: 90,
+      totalDuels: 4,
       preferredLanguages: [
-        { language: 'TypeScript', percentage: 100, color: '#00FF00' },
+        { language: 'TypeScript', percentage: 50, color: '#00FF00' },
+        { language: 'Python', percentage: 25, color: '#3b82f6' },
+        { language: 'C++', percentage: 25, color: '#f59e0b' },
       ],
-      honors: ['INITIATE OPERATOR'],
+      honors: ['INITIATE OPERATOR', 'ARENA DUELIST'],
       competencies: getInitialCompetencies(),
-      matches: [],
+      matches: starterMatches,
       aiAssessment: {
-        tacticalCritique: 'New operator registered on the arena ladder. Complete ranked duels or training drills to calibrate tactical dossier.',
-        focusRecommendation: 'Calibrate fundamental algorithm speed and edge case coverage across test suites.',
+        tacticalCritique: 'Operator demonstrates high structural accuracy in graph and matrix traversal, with fast TypeScript and Python implementations.',
+        focusRecommendation: 'Calibrate tree inversion recursion and bitmask optimizations to break past Diamond tier.',
         lastAudited: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       },
     };
@@ -1588,8 +1656,9 @@ function updateProfileWithMatch(
     language: match.language,
     eloChange: eloDelta,
     testScore: `${match.passedCount}/${match.totalTests} (${thisMatchAccuracy}%)`,
-    date: 'Today',
+    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+    completedAt: new Date().toISOString(),
     playback: playbackData,
     review: match.review,
   };

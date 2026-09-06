@@ -17,11 +17,13 @@ export interface UserAccountProfile {
 interface AppState {
   currentUser: Pick<User, 'id' | 'name'>;
   accountProfile: UserAccountProfile | null;
+  pendingRoomId: string | null;
   isAuthModalOpen: boolean;
   isProfileSetupOpen: boolean;
   authLoading: boolean;
   
   setCurrentUser: (name: string) => void;
+  setPendingRoomId: (roomId: string | null) => void;
   setAccountProfile: (profile: Partial<UserAccountProfile> | null) => void;
   setAuthModalOpen: (open: boolean) => void;
   setProfileSetupOpen: (open: boolean) => void;
@@ -31,6 +33,7 @@ interface AppState {
 }
 
 const STORAGE_PROFILE_KEY = 'algoarena_account_profile';
+const STORAGE_PENDING_ROOM_KEY = 'algoarena_pending_room';
 
 const loadStoredProfile = (): UserAccountProfile | null => {
   try {
@@ -61,22 +64,51 @@ const getStoredUser = () => {
     
     return {
       id,
-      name: savedName || 'swagatag275',
+      name: savedName || '',
     };
   } catch {
     return {
       id: uuidv4(),
-      name: 'swagatag275',
+      name: '',
     };
   }
+};
+
+const getInitialPendingRoom = (): string | null => {
+  try {
+    // Check URL parameters first (?join=... or /room/...)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const joinParam = params.get('join') || params.get('room');
+      if (joinParam) return joinParam;
+      
+      const match = window.location.pathname.match(/\/(?:room|arena)\/([^/?#]+)/);
+      if (match && match[1]) return match[1];
+
+      return localStorage.getItem(STORAGE_PENDING_ROOM_KEY);
+    }
+  } catch {}
+  return null;
 };
 
 export const useStore = create<AppState>((set, get) => ({
   currentUser: getStoredUser(),
   accountProfile: loadStoredProfile(),
+  pendingRoomId: getInitialPendingRoom(),
   isAuthModalOpen: false,
   isProfileSetupOpen: false,
   authLoading: true,
+
+  setPendingRoomId: (roomId: string | null) => {
+    try {
+      if (roomId) {
+        localStorage.setItem(STORAGE_PENDING_ROOM_KEY, roomId);
+      } else {
+        localStorage.removeItem(STORAGE_PENDING_ROOM_KEY);
+      }
+    } catch {}
+    set({ pendingRoomId: roomId });
+  },
 
   setCurrentUser: (name: string) => {
     try {

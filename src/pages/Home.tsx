@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GlobalActivity } from '../components/GlobalActivity';
 import { Leaderboard } from '../components/Leaderboard';
 import { ConnectionStatus } from '../components/ConnectionStatus';
+import { SoundToggle } from '../components/SoundToggle';
 
 export function Home() {
   const navigate = useNavigate();
@@ -69,6 +70,7 @@ export function Home() {
             </span>
           </div>
           <ConnectionStatus />
+          <SoundToggle />
         </div>
 
         <div className="flex items-center gap-3">

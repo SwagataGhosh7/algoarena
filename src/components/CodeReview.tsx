@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Code2, Lightbulb } from 'lucide-react';
 import { CodeReviewData } from '../types';
+import { SubmissionCodeViewer } from './SubmissionCodeViewer';
 
 interface CodeReviewProps {
   review: CodeReviewData;
@@ -42,12 +43,20 @@ export function CodeReview({ review, submittedCode, language }: CodeReviewProps)
         </div>
 
         {submittedCode && (
-          <details className="border border-white/10 bg-black/40">
-            <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase text-zinc-400 hover:text-white">
-              Your submitted code {language ? `// ${language}` : ''}
-            </summary>
-            <pre className="max-h-48 overflow-auto border-t border-white/10 p-3 text-[11px] leading-relaxed text-zinc-300">{submittedCode}</pre>
-          </details>
+          <div className="border border-white/10 bg-black/40">
+            <div className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-300 border-b border-white/10 flex items-center justify-between">
+              <span>Your Submitted Solution // {language || 'TypeScript'}</span>
+              <span className="text-[#00FF00] text-[9px] font-mono">MONACO / PRISM HIGHLIGHTED</span>
+            </div>
+            <SubmissionCodeViewer
+              code={submittedCode}
+              language={language}
+              height="220px"
+              compact
+              showEngineToggle
+              defaultEngine="monaco"
+            />
+          </div>
         )}
 
         <div>
@@ -74,11 +83,24 @@ export function CodeReview({ review, submittedCode, language }: CodeReviewProps)
           </div>
         </div>
 
-        <details className="border border-[#00FF00]/30 bg-black/40">
-          <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase text-[#00FF00] hover:text-white">Show expected solution</summary>
-          <pre className="max-h-72 overflow-auto border-t border-white/10 p-3 text-[11px] leading-relaxed text-zinc-300">{review.expectedSolution}</pre>
-        </details>
+        {review.expectedSolution && (
+          <div className="border border-[#00FF00]/30 bg-black/40">
+            <div className="px-3 py-2 text-[10px] font-bold uppercase text-[#00FF00] border-b border-white/10 flex items-center justify-between">
+              <span>Optimal Reference Solution</span>
+              <span className="text-zinc-500 text-[9px]">CANONICAL ALGORITHM</span>
+            </div>
+            <SubmissionCodeViewer
+              code={review.expectedSolution}
+              language={language}
+              height="240px"
+              compact
+              showEngineToggle
+              defaultEngine="monaco"
+            />
+          </div>
+        )}
       </div>
     </section>
   );
 }
+

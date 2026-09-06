@@ -31,6 +31,7 @@ import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
 import { useStore } from '../store';
 import { UserProfileData, MatchRecord } from '../types';
+import { getLocalMatches, getSampleBenchmarkMatches, recordCompletedMatch } from '../lib/matchHistoryStorage';
 import { apiUrl } from '../api';
 
 export function Profile() {
@@ -71,6 +72,29 @@ export function Profile() {
           data.photoURL = accountProfile.photoURL || data.photoURL;
         }
 
+        // Merge locally cached completed arena sessions
+        const localMatches = getLocalMatches(operatorName);
+        if (localMatches && localMatches.length > 0) {
+          const matchMap = new Map<string, MatchRecord>();
+          // Server matches
+          (data.matches || []).forEach(m => matchMap.set(m.id, m));
+          // Local matches (override or supplement)
+          localMatches.forEach(m => {
+            if (!matchMap.has(m.id)) {
+              matchMap.set(m.id, m);
+            }
+          });
+          data.matches = Array.from(matchMap.values()).sort((a, b) => {
+            const timeA = new Date(a.completedAt || `${a.date} ${a.timestamp}`).getTime() || 0;
+            const timeB = new Date(b.completedAt || `${b.date} ${b.timestamp}`).getTime() || 0;
+            return timeB - timeA;
+          });
+          // Update total duels and win counts
+          data.totalDuels = data.matches.length;
+          data.wins = data.matches.filter(m => m.outcome === 'Victory').length;
+          data.losses = data.matches.filter(m => m.outcome === 'Defeat').length;
+        }
+
         setProfile(data);
 
         if (data.matches && data.matches.length > 0 && !selectedPlaybackMatch) {
@@ -78,7 +102,34 @@ export function Profile() {
         }
       }
     } catch (err) {
-      console.warn('Failed to load user profile:', err);
+      console.warn('Failed to load user profile, falling back to local telemetry:', err);
+      const localMatches = getLocalMatches(operatorName);
+      const wins = localMatches.filter(m => m.outcome === 'Victory').length;
+      const losses = localMatches.filter(m => m.outcome === 'Defeat').length;
+      setProfile({
+        username: operatorName,
+        name: accountProfile?.name || operatorName,
+        friends: [],
+        incomingFriendRequests: [],
+        outgoingFriendRequests: [],
+        elo: 1200 + (wins * 25) - (losses * 18),
+        rankTitle: wins >= 5 ? 'GOLD II' : 'SILVER I',
+        peakElo: 1200 + (wins * 25),
+        wins,
+        losses,
+        streak: wins > 0 ? 1 : 0,
+        testAccuracy: 95,
+        totalDuels: localMatches.length,
+        preferredLanguages: [{ language: 'TypeScript', percentage: 100, color: '#00FF00' }],
+        honors: ['ARENA OPERATOR'],
+        competencies: [],
+        matches: localMatches,
+        aiAssessment: {
+          tacticalCritique: 'Telemetry sourced from local combat records cache.',
+          focusRecommendation: 'Calibrate core problem solving in 1v1 duels.',
+          lastAudited: 'Today',
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -144,6 +195,43 @@ export function Profile() {
   const handleSelectPlayback = (match: MatchRecord) => {
     setSelectedPlaybackMatch(match);
     playbackSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleSeedBenchmarkMatches = () => {
+    if (!profile) return;
+    const samples = getSampleBenchmarkMatches();
+    const existing = profile.matches || [];
+    const seen = new Set(existing.map(m => m.id));
+    const toAdd = samples.filter(s => !seen.has(s.id));
+    const updatedMatches = [...toAdd, ...existing];
+
+    const wins = updatedMatches.filter(m => m.outcome === 'Victory').length;
+    const losses = updatedMatches.filter(m => m.outcome === 'Defeat').length;
+    setProfile({
+      ...profile,
+      matches: updatedMatches,
+      totalDuels: updatedMatches.length,
+      wins,
+      losses,
+    });
+
+    // Save locally
+    toAdd.forEach(s => {
+      recordCompletedMatch(operatorName, {
+        id: s.id,
+        opponent: s.opponent,
+        opponentRank: s.opponentRank,
+        outcome: s.outcome,
+        problem: s.problem,
+        difficulty: s.difficulty,
+        duration: s.duration,
+        language: s.language,
+        eloChange: s.eloChange,
+        testScore: s.testScore,
+        playback: s.playback,
+        review: s.review,
+      });
+    });
   };
 
   const loadBenchmarkSamplePlayback = () => {
@@ -544,6 +632,8 @@ export function Profile() {
             matches={profile.matches} 
             username={profile.username}
             onSelectPlayback={handleSelectPlayback}
+            onSelectReview={handleSelectPlayback}
+            onSeedSample={handleSeedBenchmarkMatches}
           />
         </section>
       </div>

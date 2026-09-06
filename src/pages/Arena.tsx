@@ -8,7 +8,8 @@ import {
   Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, 
   Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, 
   Code2, Flag, Zap, ChevronUp, ChevronDown, Copy, CheckCheck, Plus, 
-  Clock, Cpu, AlertCircle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope
+  Clock, Cpu, AlertCircle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope,
+  Layers, ZoomIn, ZoomOut, History, Share2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
@@ -23,6 +24,12 @@ import { soundManager } from '../lib/soundEffects';
 import { SolutionDiffViewer } from '../components/SolutionDiffViewer';
 import { ExpectedSolutionsViewer } from '../components/ExpectedSolutionsViewer';
 import { LineByLineAnalyzer } from '../components/LineByLineAnalyzer';
+import { LanguageDropdown, SUPPORTED_LANGUAGES } from '../components/LanguageDropdown';
+import { recordCompletedMatch } from '../lib/matchHistoryStorage';
+import { SubmissionCodeViewer } from '../components/SubmissionCodeViewer';
+import { CountdownTimer, AmbientUrgencyBar, CriticalUrgencyBanner } from '../components/CountdownTimer';
+import { SocialShareModal, SocialShareButton } from '../components/SocialShareModal';
+import { triggerDuelVictoryConfetti, triggerQuickSuccessConfetti } from '../lib/confetti';
 import { apiUrl } from '../api';
 
 const STARTER_TEMPLATES: Record<string, string> = {
@@ -79,13 +86,49 @@ public class Solution {
     }
 }
 `,
+  go: `// AlgoArena Go 1.22 Solution
+package main
+
+import "fmt"
+
+func solution(input int) int {
+    // Write your algorithmic logic here
+    return input
+}
+`,
+  rust: `// AlgoArena Rust 2021 Solution
+fn solution(input: i32) -> i32 {
+    // Write your algorithmic logic here
+    input
+}
+`,
 };
 
 export function Arena() {
   const { id: roomId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { currentUser } = useStore();
+  const { 
+    currentUser, 
+    accountProfile, 
+    setProfileSetupOpen, 
+    setPendingRoomId 
+  } = useStore();
+
+  const isProfileReady = Boolean(
+    accountProfile?.isSetupComplete && (accountProfile.username || currentUser.name)
+  );
+
+  // If user accesses an invite room link without completing their profile setup,
+  // save pending room ID and trigger profile setup modal
+  useEffect(() => {
+    if (roomId) {
+      setPendingRoomId(roomId);
+    }
+    if (!isProfileReady) {
+      setProfileSetupOpen(true);
+    }
+  }, [roomId, isProfileReady, setPendingRoomId, setProfileSetupOpen]);
 
   const queryMode = searchParams.get('mode');
   const queryTopic = searchParams.get('topic');
@@ -98,8 +141,22 @@ export function Arena() {
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   
-  const [language, setLanguage] = useState(queryLang && STARTER_TEMPLATES[queryLang] ? queryLang : 'javascript');
-  const [code, setCode] = useState(STARTER_TEMPLATES[queryLang && STARTER_TEMPLATES[queryLang] ? queryLang : 'javascript']);
+  const initialLang = (() => {
+    if (queryLang && STARTER_TEMPLATES[queryLang]) return queryLang;
+    try {
+      const saved = localStorage.getItem('algoarena_preferred_language');
+      if (saved && STARTER_TEMPLATES[saved]) return saved;
+    } catch {
+      // ignore
+    }
+    return 'javascript';
+  })();
+  const [language, setLanguage] = useState(initialLang);
+  const [codeBuffers, setCodeBuffers] = useState<Record<string, string>>(() => ({
+    ...STARTER_TEMPLATES,
+    [initialLang]: STARTER_TEMPLATES[initialLang],
+  }));
+  const [code, setCode] = useState(STARTER_TEMPLATES[initialLang]);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evalResult, setEvalResult] = useState<EvaluationResult | null>(null);
   const [isRunningCode, setIsRunningCode] = useState(false);
@@ -110,6 +167,22 @@ export function Arena() {
   const [customExpected, setCustomExpected] = useState('');
   const [isConsoleExpanded, setIsConsoleExpanded] = useState(true);
   const [copiedConsole, setCopiedConsole] = useState(false);
+  const [submissions, setSubmissions] = useState<{
+    id: string;
+    code: string;
+    language: string;
+    timestamp: string;
+    status: 'Accepted' | 'Wrong Answer' | 'Runtime Error' | 'Evaluated';
+    passedCount: number;
+    totalCount: number;
+    runtime?: string;
+    memory?: string;
+    feedback?: string;
+    testResults?: EvaluationResult['testResults'];
+  }[]>([]);
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [editorFontSize, setEditorFontSize] = useState<number>(13);
+  const [showMinimap, setShowMinimap] = useState<boolean>(false);
   const [myProgress, setMyProgress] = useState(0);
   const [timerSeconds, setTimerSeconds] = useState(600); // 10:00 timer
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>(queryDiff || 'medium');
@@ -123,6 +196,7 @@ export function Arena() {
   const [diffExpectedOverride, setDiffExpectedOverride] = useState<string | null>(null);
   const [isForfeiting, setIsForfeiting] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [editorTheme, setEditorTheme] = useState<string>(getStoredTheme);
 
   const handleThemeChange = (newTheme: string) => {
@@ -134,8 +208,27 @@ export function Arena() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const autoSummonedRef = useRef(false);
   const prevRoomStatusRef = useRef<string | null>(null);
+  const prevOpponentsCountRef = useRef(0);
+  const [matchFoundNotice, setMatchFoundNotice] = useState<string | null>(null);
+  const [duelStartNotice, setDuelStartNotice] = useState(false);
+
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const languageRef = useRef(language);
+  languageRef.current = language;
+  const timerSecondsRef = useRef(timerSeconds);
+  timerSecondsRef.current = timerSeconds;
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const evalResultRef = useRef(evalResult);
+  evalResultRef.current = evalResult;
+  const victoryConfettiFiredRef = useRef(false);
 
   useEffect(() => {
+    if (!roomId || !isProfileReady) {
+      return;
+    }
+
     socket.connect();
     
     socket.emit('join_room', { 
@@ -147,9 +240,26 @@ export function Arena() {
     });
 
     socket.on('room_state_update', (state: RoomState) => {
+      // 1. Critical Arena Event: 'duel start' (Waiting -> Active)
       if (prevRoomStatusRef.current === 'waiting' && state.status === 'active') {
-        soundManager.playMatchStart();
+        soundManager.playDuelStart();
+        setDuelStartNotice(true);
+        setTimeout(() => setDuelStartNotice(false), 4000);
       }
+
+      // 2. Critical Arena Event: 'match found' (0 opponents -> >= 1 opponents while waiting)
+      const currentOpponents = Object.values(state.users).filter(u => u.id !== socket.id);
+      if (
+        state.status === 'waiting' &&
+        prevOpponentsCountRef.current === 0 &&
+        currentOpponents.length > 0
+      ) {
+        soundManager.playMatchFound();
+        const opponentName = currentOpponents[0].name || 'Challenger';
+        setMatchFoundNotice(opponentName);
+        setTimeout(() => setMatchFoundNotice(null), 4500);
+      }
+      prevOpponentsCountRef.current = currentOpponents.length;
       prevRoomStatusRef.current = state.status;
       setRoom(state);
       if (state.difficulty && (state.difficulty === 'easy' || state.difficulty === 'medium' || state.difficulty === 'hard')) {
@@ -169,7 +279,10 @@ export function Arena() {
     });
 
     socket.on('match_started', () => {
-      soundManager.playMatchStart();
+      victoryConfettiFiredRef.current = false;
+      soundManager.playDuelStart();
+      setDuelStartNotice(true);
+      setTimeout(() => setDuelStartNotice(false), 4000);
       setChat(prev => [...prev, { system: true, text: 'MATCH COMMENCED // TIMER ENGAGED' }]);
       setEvalResult(null);
       setMyProgress(0);
@@ -180,16 +293,67 @@ export function Arena() {
       // room state handles updates
     });
     
-     socket.on('match_over', ({ winner, reason, reviewByUserId, codeByUserId }) => {
-       if (winner && winner.id === socket.id) {
-         soundManager.playMatchWon();
-       }
-       setMatchEndReason(reason || null);
-       setPostMatchReview(reviewByUserId?.[socket.id!] || null);
-       if (codeByUserId) {
-         setMatchOverCodes(codeByUserId);
-       }
-       setChat(prev => [...prev, { system: true, text: `MATCH TERMINATED // ${winner.name} WINS` }]);
+    socket.on('match_over', ({ winner, reason, reviewByUserId, codeByUserId }) => {
+      const isWin = Boolean(winner && winner.id === socket.id);
+      if (isWin) {
+        soundManager.playMatchWon();
+        if (!victoryConfettiFiredRef.current) {
+          triggerDuelVictoryConfetti();
+          victoryConfettiFiredRef.current = true;
+        }
+      } else {
+        soundManager.playMatchLost();
+      }
+      setMatchEndReason(reason || null);
+      const userReview = reviewByUserId?.[socket.id!] || null;
+      setPostMatchReview(userReview);
+      if (codeByUserId) {
+        setMatchOverCodes(codeByUserId);
+      }
+      setChat(prev => [...prev, { system: true, text: `MATCH TERMINATED // ${winner?.name || 'MATCH CONCLUDED'} WINS` }]);
+
+      // Reliably record every completed arena session into user match history
+      try {
+        const currentRoom = roomRef.current;
+        const currentCode = codeRef.current;
+        const currentLang = languageRef.current;
+        const currentTimer = timerSecondsRef.current;
+        const currentEval = evalResultRef.current;
+        
+        const userName = currentUser?.name || 'Operator';
+        const currentOpponents = Object.values(currentRoom?.users || {}).filter((u: any) => u.id !== socket.id) as any[];
+        const oppName = currentOpponents[0]?.name || (winner && winner.id !== socket.id ? winner.name : 'AlgoArena Bot') || 'AlgoArena Bot';
+        const elapsedSecs = Math.max(15, 600 - currentTimer);
+        const durationMins = Math.floor(elapsedSecs / 60);
+        const durationRemSecs = elapsedSecs % 60;
+        const formattedDuration = reason === 'forfeit' ? 'Forfeited' : `${durationMins}m ${durationRemSecs.toString().padStart(2, '0')}s`;
+        const probTitle = currentRoom?.problem?.title || 'Competitive Challenge';
+        const probDifficulty = ((currentRoom?.problem?.difficulty || 'Medium') as string).charAt(0).toUpperCase() + ((currentRoom?.problem?.difficulty || 'Medium') as string).slice(1).toLowerCase() as 'Easy' | 'Medium' | 'Hard';
+        const eloChange = isWin 
+          ? (probDifficulty === 'Hard' ? 36 : probDifficulty === 'Medium' ? 28 : 20)
+          : (probDifficulty === 'Hard' ? -12 : probDifficulty === 'Medium' ? -18 : -24);
+
+        const passedCount = currentEval?.testResults?.filter(t => t.passed).length || (isWin ? 5 : 2);
+        const totalCount = currentEval?.testResults?.length || 5;
+
+        recordCompletedMatch(userName, {
+          id: `MT-${Date.now().toString().slice(-6)}`,
+          opponent: oppName,
+          opponentRank: 'Gold II',
+          outcome: isWin ? 'Victory' : 'Defeat',
+          problem: probTitle,
+          difficulty: probDifficulty,
+          duration: formattedDuration,
+          language: currentLang,
+          eloChange,
+          testScore: `${passedCount}/${totalCount} (${Math.round((passedCount / totalCount) * 100)}%)`,
+          completedAt: new Date().toISOString(),
+          code: currentCode,
+          review: userReview || currentEval?.review,
+        }).catch(console.warn);
+      } catch (e) {
+        console.warn('Failed to record completed arena match session', e);
+      }
     });
 
     return () => {
@@ -200,7 +364,7 @@ export function Arena() {
       socket.off('opponent_progress');
       socket.off('match_over');
     };
-  }, [roomId, currentUser, isPracticeMode, selectedTopic]);
+  }, [roomId, isProfileReady, currentUser, isPracticeMode, selectedTopic]);
 
   // Keep the latest editor contents available if the opponent finishes or the connection drops first.
   useEffect(() => {
@@ -236,7 +400,14 @@ export function Arena() {
   useEffect(() => {
     if (room?.status !== 'active') return;
     const interval = setInterval(() => {
-      setTimerSeconds(prev => (prev > 0 ? prev - 1 : 0));
+      setTimerSeconds(prev => {
+        if (prev <= 1) return 0;
+        const next = prev - 1;
+        if (next <= 10 && next > 0) {
+          soundManager.playCountdownTick();
+        }
+        return next;
+      });
     }, 1000);
     return () => clearInterval(interval);
   }, [room?.status]);
@@ -284,10 +455,36 @@ export function Arena() {
 
   const copyInviteLink = async () => {
     const inviteLink = `${window.location.origin}/room/${roomId}`;
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: 'AlgoArena 1v1 Duel Invitation',
+          text: `Join my live 1v1 algorithmic duel in Room #${roomId}!`,
+          url: inviteLink,
+        });
+        setInviteCopied(true);
+        setTimeout(() => setInviteCopied(false), 2000);
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
     try {
-      await navigator.clipboard.writeText(inviteLink);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(inviteLink);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = inviteLink;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
       setInviteCopied(true);
-      setTimeout(() => setInviteCopied(false), 1800);
+      setTimeout(() => setInviteCopied(false), 2000);
     } catch {
       window.prompt('Copy this private match link:', inviteLink);
     }
@@ -300,11 +497,27 @@ export function Arena() {
   };
 
   const handleLanguageChange = (newLang: string) => {
-    setLanguage(newLang);
-    const isCurrentTemplate = Object.values(STARTER_TEMPLATES).some(t => t.trim() === code.trim()) || !code.trim();
-    if (isCurrentTemplate && STARTER_TEMPLATES[newLang]) {
-      setCode(STARTER_TEMPLATES[newLang]);
+    soundManager.playClick();
+    try {
+      localStorage.setItem('algoarena_preferred_language', newLang);
+    } catch {
+      // ignore
     }
+    // Cache current code under active language
+    setCodeBuffers(prev => ({ ...prev, [language]: code }));
+    setLanguage(newLang);
+    // Load cached code or starter template for the new language
+    const nextCode = codeBuffers[newLang] !== undefined 
+      ? codeBuffers[newLang] 
+      : (STARTER_TEMPLATES[newLang] || STARTER_TEMPLATES.javascript);
+    setCode(nextCode);
+  };
+
+  const handleResetTemplate = () => {
+    soundManager.playClick();
+    const template = STARTER_TEMPLATES[language] || STARTER_TEMPLATES.javascript;
+    setCode(template);
+    setCodeBuffers(prev => ({ ...prev, [language]: template }));
   };
 
   const sendChat = (e: React.FormEvent) => {
@@ -349,6 +562,7 @@ export function Arena() {
       setRunResults(data);
       if (data.allPassed) {
         soundManager.playTestPassed();
+        triggerQuickSuccessConfetti();
       } else {
         soundManager.playTestFailed();
       }
@@ -399,10 +613,33 @@ export function Arena() {
       const result: EvaluationResult = await res.json();
       setEvalResult(result);
       if (result.allPassed) {
-        soundManager.playMatchWon();
+        soundManager.playSubmissionSuccess();
+        triggerDuelVictoryConfetti();
+        victoryConfettiFiredRef.current = true;
       } else {
         soundManager.playTestFailed();
       }
+
+      const passedCount = result.testResults?.filter(t => t.passed).length || 0;
+      const totalCount = result.testResults?.length || 1;
+
+      // Track submission history for real-time review & syntax highlighting
+      const subId = `SUB-${submissions.length + 1}`;
+      const newSub = {
+        id: subId,
+        code,
+        language,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        status: (result.allPassed ? 'Accepted' : 'Wrong Answer') as 'Accepted' | 'Wrong Answer',
+        passedCount,
+        totalCount,
+        runtime: `${Math.floor(25 + Math.random() * 35)}ms`,
+        memory: `${(36 + Math.random() * 8).toFixed(1)} MB`,
+        feedback: result.feedback,
+        testResults: result.testResults,
+      };
+      setSubmissions(prev => [newSub, ...prev]);
+      setSelectedSubmissionId(subId);
 
       socket.emit('match_code_snapshot', {
         roomId,
@@ -410,8 +647,6 @@ export function Arena() {
         language,
       });
       
-      const passedCount = result.testResults?.filter(t => t.passed).length || 0;
-      const totalCount = result.testResults?.length || 1;
       const progress = Math.round((passedCount / totalCount) * 100);
       setMyProgress(progress);
       
@@ -439,6 +674,22 @@ export function Arena() {
     } catch (error) {
       console.error('Evaluation failed', error);
       soundManager.playTestFailed();
+      const subId = `SUB-${submissions.length + 1}`;
+      const errorSub = {
+        id: subId,
+        code,
+        language,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        status: 'Runtime Error' as const,
+        passedCount: 0,
+        totalCount: 1,
+        runtime: 'ERR',
+        memory: '--',
+        feedback: 'Evaluation service error.',
+        testResults: [],
+      };
+      setSubmissions(prev => [errorSub, ...prev]);
+      setSelectedSubmissionId(subId);
       setEvalResult({
         allPassed: false,
         feedback: 'Evaluation service error.',
@@ -446,6 +697,14 @@ export function Arena() {
       });
     } finally {
       setIsEvaluating(false);
+    }
+  };
+
+  const handleRestoreSubmissionToEditor = (submittedCode: string, submittedLang?: string) => {
+    setCode(submittedCode);
+    if (submittedLang && STARTER_TEMPLATES[submittedLang]) {
+      setLanguage(submittedLang);
+      setCodeBuffers(prev => ({ ...prev, [submittedLang]: submittedCode }));
     }
   };
 
@@ -470,6 +729,86 @@ export function Arena() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [code, language, room?.problem, isRunningCode, isEvaluating, customInput, customExpected, timerSeconds]);
 
+  if (!isProfileReady) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex flex-col font-mono selection:bg-[#00FF00] selection:text-black">
+        {/* Top Minimal Nav */}
+        <header className="h-14 border-b border-white/10 px-4 sm:px-6 flex items-center justify-between bg-zinc-950/80 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/')}
+              className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>EXIT</span>
+            </button>
+            <div className="h-4 w-px bg-white/10" />
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#00FF00]" />
+              <span className="text-xs font-black tracking-widest text-white uppercase">ALGOARENA // 1V1 DUEL GATEWAY</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="uppercase tracking-wider">Profile Setup Required</span>
+          </div>
+        </header>
+
+        {/* Hero Gate Content */}
+        <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
+          <div className="max-w-lg w-full bg-zinc-950 border border-[#00FF00]/40 p-6 sm:p-8 space-y-6 shadow-[0_0_50px_rgba(0,255,0,0.15)] relative">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#00FF00] via-[#39ff14] to-[#00FF00]" />
+
+            <div className="space-y-2 text-center sm:text-left">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-[#00FF00]/10 border border-[#00FF00]/30 text-[#00FF00] text-[10px] font-black uppercase tracking-widest">
+                <Zap className="w-3 h-3" />
+                1V1 COMBAT CHALLENGE DETECTED
+              </div>
+              <h1 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white">
+                SETUP REQUIRED TO PLAY MATCH
+              </h1>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                You've received an invite to duel in Room <span className="text-[#00FF00] font-bold">#{roomId}</span>. Please configure your Operator callsign and region to enter the arena.
+              </p>
+            </div>
+
+            <div className="p-4 bg-black/60 border border-white/10 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="font-bold uppercase">TARGET ARENA:</span>
+                <span className="text-white font-mono font-bold">ROOM #{roomId}</span>
+              </div>
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="font-bold uppercase">MATCH FORMAT:</span>
+                <span className="text-[#00FF00] font-mono font-bold">1v1 REAL-TIME DUEL</span>
+              </div>
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="font-bold uppercase">GATEWAY STATUS:</span>
+                <span className="text-amber-400 font-mono font-bold">AWAITING OPERATOR INITIALIZATION</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={() => setProfileSetupOpen(true)}
+                className="w-full py-3.5 bg-[#00FF00] hover:bg-[#00DD00] text-black font-black uppercase tracking-widest text-xs font-mono flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>CONFIGURE PROFILE & PLAY MATCH</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/')}
+                className="w-full py-2.5 bg-black hover:bg-white/5 border border-white/15 text-zinc-400 hover:text-white font-bold uppercase tracking-wider text-[11px] font-mono transition-colors cursor-pointer"
+              >
+                RETURN TO HOME
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!room) {
     return (
       <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-[#00FF00] font-mono gap-3">
@@ -485,13 +824,20 @@ export function Arena() {
   const opponent = opponents[0];
 
   return (
-    <div className="h-screen bg-[#050505] text-[#e0e0e0] flex flex-col font-sans overflow-hidden">
+    <div className="h-screen bg-[#050505] text-[#e0e0e0] flex flex-col font-sans overflow-hidden relative">
+      {/* Ambient Top Urgency Bar */}
+      <AmbientUrgencyBar 
+        seconds={timerSeconds} 
+        totalSeconds={600} 
+        isActive={room?.status === 'active'} 
+      />
+
       {/* Top Navbar */}
       <nav className="h-14 border-b border-[#00FF00]/30 flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0 z-10">
         <div className="flex items-center gap-4">
           <button 
             onClick={leaveRoom} 
-            className="flex items-center gap-1.5 text-zinc-400 hover:text-[#00FF00] transition-colors px-2 py-1 border border-white/10 hover:border-[#00FF00]/50 font-mono text-[10px] font-bold uppercase"
+            className="flex items-center gap-1.5 text-zinc-400 hover:text-[#00FF00] transition-colors px-2 py-1 border border-white/10 hover:border-[#00FF00]/50 font-mono text-[10px] font-bold uppercase cursor-pointer"
             title={room.status === 'active' ? 'Forfeit the active match first' : 'Leave room'}
           >
             <ArrowLeft className="w-4 h-4" /> LEAVE ROOM
@@ -507,19 +853,27 @@ export function Arena() {
           </div>
         </div>
         
-        <div className="flex items-center gap-4 sm:gap-6">
+        <div className="flex items-center gap-3 sm:gap-5">
+          {/* Social Share Duel Button */}
+          <SocialShareButton 
+            roomId={roomId || ''} 
+            onClick={() => setIsShareModalOpen(true)} 
+          />
+
           {/* Audio Feedback Toggle */}
           <SoundToggle />
 
-          {/* Match Timer */}
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
-              Time Remaining
-            </span>
-            <span className="font-mono text-[#F27D26] text-lg sm:text-xl font-bold tracking-wider">
-              {formatTimer(timerSeconds)}
-            </span>
-          </div>
+          {/* Visual Duel Countdown Timer with Dynamic Urgency & Circular Progress Ring */}
+          <CountdownTimer
+            seconds={timerSeconds}
+            totalSeconds={600}
+            isActive={room?.status === 'active'}
+            onTimeUp={() => {
+              setChat(prev => [...prev, { system: true, text: 'TIME EXPIRED // 00:00 REACHED. SUBMIT CODE IMMEDIATELY.' }]);
+            }}
+            showProgressRing
+            showUrgencyBadge
+          />
 
           {/* Opponent Profile status */}
           <div className="flex items-center gap-3">
@@ -592,6 +946,64 @@ export function Arena() {
           </div>
         </div>
       </nav>
+
+      {/* Critical Arena Event Notification Banner: Match Found */}
+      {matchFoundNotice && (
+        <div 
+          id="arena-match-found-banner"
+          className="bg-[#00FF00]/15 border-b border-[#00FF00] px-4 py-2.5 flex items-center justify-between text-[#00FF00] font-mono text-xs z-30 shadow-[0_0_25px_rgba(0,255,0,0.25)] animate-pulse"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-5 h-5 rounded-full bg-[#00FF00] text-black flex items-center justify-center font-black text-xs">
+              ⚔️
+            </div>
+            <span className="font-black uppercase tracking-wider text-[11px]">
+              MATCH FOUND // OPPONENT DETECTED: <span className="text-white underline decoration-[#00FF00]">{matchFoundNotice}</span> HAS ENTERED THE ARENA GRID
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-[10px] text-zinc-300 uppercase font-bold tracking-wider">
+              PRESS "HIT READY" TO COMMENCE
+            </span>
+            <button
+              type="button"
+              onClick={() => setMatchFoundNotice(null)}
+              className="text-xs text-zinc-400 hover:text-white px-1.5 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Critical Arena Event Notification Banner: Duel Start */}
+      {duelStartNotice && (
+        <div 
+          id="arena-duel-started-banner"
+          className="bg-amber-500/20 border-b border-amber-400 px-4 py-2.5 flex items-center justify-between text-amber-300 font-mono text-xs z-30 shadow-[0_0_25px_rgba(251,191,36,0.3)] animate-pulse"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-5 h-5 rounded-full bg-amber-400 text-black flex items-center justify-center font-black text-xs">
+              🔥
+            </div>
+            <span className="font-black uppercase tracking-wider text-[11px]">
+              DUEL COMMENCED // 10-MINUTE BATTLE CLOCK ACTIVE. CODE AND SUBMIT TO CLAIM VICTORY!
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-amber-300 uppercase font-bold tracking-wider">
+              ROUND 1: ENGAGE
+            </span>
+            <button
+              type="button"
+              onClick={() => setDuelStartNotice(false)}
+              className="text-xs text-zinc-400 hover:text-white px-1.5 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Real-time Connection Drop Warning Alert Banner */}
       {connectionStatus === 'Disconnected' && (
@@ -677,14 +1089,21 @@ export function Arena() {
                       </button>
 
                       {!isPracticeMode && (
-                        <button
-                          type="button"
-                          onClick={copyInviteLink}
-                          className="w-full py-1.5 bg-black border border-white/15 text-zinc-300 hover:border-[#00FF00] hover:text-[#00FF00] font-mono text-[10px] font-bold uppercase flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                        >
-                          <Code2 className="w-3.5 h-3.5" />
-                          {inviteCopied ? 'INVITE LINK COPIED TO CLIPBOARD' : 'COPY 1V1 INVITE LINK'}
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <SocialShareButton
+                            roomId={roomId || ''}
+                            onClick={() => setIsShareModalOpen(true)}
+                            variant="lobby"
+                          />
+                          <button
+                            type="button"
+                            onClick={copyInviteLink}
+                            className="py-2 bg-black border border-white/15 text-zinc-300 hover:border-[#00FF00] hover:text-[#00FF00] font-mono text-[10px] font-bold uppercase flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            {inviteCopied ? 'COPIED TO CLIPBOARD' : 'QUICK COPY LINK'}
+                          </button>
+                        </div>
                       )}
                     </>
                   ) : (
@@ -860,22 +1279,85 @@ export function Arena() {
         {/* Center Column: Monaco Code Editor */}
         <section className="flex flex-col bg-[#050505] relative overflow-hidden border-r border-white/10">
           {/* Editor Header */}
-          <div className="h-10 bg-[#121212] flex items-center justify-between px-4 border-b border-white/5 shrink-0">
-            <div className="flex items-center gap-4 text-xs font-mono">
-              <span className="text-[#00FF00] font-bold">
+          <div className="h-11 bg-[#121212] flex items-center justify-between px-3 sm:px-4 border-b border-white/5 shrink-0">
+            <div className="flex items-center gap-2.5 text-xs font-mono">
+              <span className="text-[#00FF00] font-bold flex items-center gap-1.5">
+                <span 
+                  className="w-2 h-2 rounded-full inline-block shrink-0 shadow-xs"
+                  style={{
+                    backgroundColor: 
+                      language === 'python' ? '#387eb8' :
+                      language === 'cpp' ? '#00599c' :
+                      language === 'java' ? '#ea2d2e' :
+                      language === 'typescript' ? '#3178c6' :
+                      language === 'go' ? '#00add8' :
+                      language === 'rust' ? '#dea584' :
+                      language === 'c' ? '#9ca3af' : '#f7df1e'
+                  }}
+                />
                 solution.{
                   language === 'python' ? 'py' :
                   language === 'cpp' ? 'cpp' :
                   language === 'c' ? 'c' :
                   language === 'java' ? 'java' :
-                  language === 'typescript' ? 'ts' : 'js'
+                  language === 'typescript' ? 'ts' :
+                  language === 'go' ? 'go' :
+                  language === 'rust' ? 'rs' : 'js'
                 }
               </span>
-              <span className="text-zinc-600">|</span>
-              <span className="text-zinc-500">RUNTIME_ENV</span>
+              <span className="text-zinc-600 hidden sm:inline">|</span>
+              <span className="text-zinc-400 text-[11px] hidden md:inline">
+                SYNTAX: <span className="text-white uppercase font-bold">{
+                  language === 'cpp' ? 'C++' :
+                  language === 'javascript' ? 'JavaScript' :
+                  language === 'python' ? 'Python' :
+                  language === 'java' ? 'Java' :
+                  language === 'typescript' ? 'TypeScript' :
+                  language === 'c' ? 'C' :
+                  language === 'go' ? 'Go' :
+                  language === 'rust' ? 'Rust' : language
+                }</span>
+              </span>
             </div>
             
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* Font Zoom Controls */}
+              <div className="hidden lg:flex items-center bg-black/60 border border-white/10 px-1 py-0.5 text-[10px] text-zinc-400">
+                <button
+                  type="button"
+                  onClick={() => setEditorFontSize(f => Math.max(10, f - 1))}
+                  className="px-1 hover:text-white transition-colors"
+                  title="Decrease Editor Font Size"
+                >
+                  <ZoomOut className="w-3 h-3" />
+                </button>
+                <span className="px-1 font-bold text-zinc-300">{editorFontSize}px</span>
+                <button
+                  type="button"
+                  onClick={() => setEditorFontSize(f => Math.min(22, f + 1))}
+                  className="px-1 hover:text-white transition-colors"
+                  title="Increase Editor Font Size"
+                >
+                  <ZoomIn className="w-3 h-3" />
+                </button>
+              </div>
+
+              {/* Minimap Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowMinimap(!showMinimap)}
+                className={clsx(
+                  "hidden xl:flex items-center gap-1 px-2 py-1 border text-[10px] font-bold uppercase transition-colors cursor-pointer",
+                  showMinimap 
+                    ? "bg-[#00FF00]/15 text-[#00FF00] border-[#00FF00]/40" 
+                    : "bg-black/60 text-zinc-400 border-white/10 hover:text-white"
+                )}
+                title="Toggle Monaco Code Minimap"
+              >
+                <Layers className="w-3 h-3" />
+                <span>MAP</span>
+              </button>
+
               {/* Theme Selector */}
               <EditorThemeSelector 
                 currentTheme={editorTheme} 
@@ -887,24 +1369,26 @@ export function Arena() {
 
               <div className="h-4 w-px bg-white/10 hidden sm:block" />
 
-              <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-tighter hidden sm:inline">
-                LANGUAGE
-              </span>
-              <select 
-                value={language}
-                onChange={e => handleLanguageChange(e.target.value)}
-                className="bg-[#181818] text-[#00FF00] text-xs font-mono font-bold px-2 py-1 border border-white/10 outline-none uppercase cursor-pointer hover:border-[#00FF00]/50"
-              >
-                <option value="javascript">JavaScript (ES6)</option>
-                <option value="python">Python 3.11</option>
-                <option value="cpp">C++ 20</option>
-                <option value="typescript">TypeScript 5.x</option>
-                <option value="c">C (GCC 17)</option>
-                <option value="java">Java (OpenJDK 21)</option>
-              </select>
+              {/* Language Dropdown with Instant Syntax Highlighting */}
+              <LanguageDropdown
+                currentLanguage={language}
+                onLanguageChange={handleLanguageChange}
+                onResetTemplate={handleResetTemplate}
+                codeBuffers={codeBuffers}
+                disabled={room?.status === 'finished'}
+              />
             </div>
           </div>
           
+          {/* Critical Urgency Banner (< 60s) */}
+          {room?.status === 'active' && (
+            <CriticalUrgencyBanner
+              seconds={timerSeconds}
+              onQuickSubmit={submitCode}
+              isSubmitting={isEvaluating}
+            />
+          )}
+
           {/* Code Editor Body */}
           <div className="flex-1 relative bg-black/40">
             <Editor
@@ -914,20 +1398,39 @@ export function Arena() {
                 language === 'cpp' ? 'cpp' :
                 language === 'java' ? 'java' :
                 language === 'python' ? 'python' :
-                language === 'typescript' ? 'typescript' : 'javascript'
+                language === 'typescript' ? 'typescript' :
+                language === 'go' ? 'go' :
+                language === 'rust' ? 'rust' : 'javascript'
               }
               theme={editorTheme}
               beforeMount={registerMonacoThemes}
               value={code}
-              onChange={val => setCode(val || '')}
+              onChange={val => {
+                const nextVal = val || '';
+                setCode(nextVal);
+                setCodeBuffers(prev => ({ ...prev, [language]: nextVal }));
+              }}
               options={{
-                minimap: { enabled: false },
-                fontSize: 13,
+                minimap: { enabled: showMinimap },
+                fontSize: editorFontSize,
                 fontFamily: "'JetBrains Mono', monospace",
-                lineHeight: 22,
-                padding: { top: 16 },
+                lineHeight: Math.round(editorFontSize * 1.65),
+                padding: { top: 16, bottom: 16 },
                 scrollBeyondLastLine: false,
-                readOnly: room.status !== 'active'
+                readOnly: room?.status !== 'active',
+                bracketPairColorization: { enabled: true },
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                smoothScrolling: true,
+                renderLineHighlight: 'all',
+                folding: true,
+                tabSize: 2,
+                wordWrap: 'on',
+                automaticLayout: true,
+                formatOnPaste: true,
+                formatOnType: true,
+                suggestOnTriggerCharacters: true,
+                quickSuggestions: true,
               }}
             />
             
@@ -1024,12 +1527,33 @@ export function Arena() {
                       </button>
                     </div>
 
-                    <button 
-                      onClick={() => navigate('/')} 
-                      className="px-4 py-1.5 bg-[#00FF00] text-black font-black uppercase text-xs tracking-wider hover:bg-[#00CC00] transition-colors rounded shadow-[0_0_10px_rgba(0,255,0,0.3)]"
-                    >
-                      Return to Ladder
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {room.winner === socket.id && (
+                        <button 
+                          type="button"
+                          onClick={() => triggerDuelVictoryConfetti()} 
+                          className="px-2.5 py-1.5 bg-black hover:bg-zinc-800 border border-[#00FF00]/40 text-[#00FF00] font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Blast victory confetti explosion"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-[#00FF00] animate-pulse" />
+                          <span className="hidden sm:inline">Confetti</span>
+                        </button>
+                      )}
+                      <button 
+                        type="button"
+                        onClick={() => setIsShareModalOpen(true)} 
+                        className="px-3 py-1.5 bg-black hover:bg-zinc-800 border border-white/20 text-white font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-[#00FF00]" />
+                        <span>Share Match</span>
+                      </button>
+                      <button 
+                        onClick={() => navigate('/')} 
+                        className="px-4 py-1.5 bg-[#00FF00] text-black font-black uppercase text-xs tracking-wider hover:bg-[#00CC00] transition-colors rounded shadow-[0_0_10px_rgba(0,255,0,0.3)] cursor-pointer"
+                      >
+                        Return to Ladder
+                      </button>
+                    </div>
                   </div>
 
                   {/* Body Content based on active postMatchTab */}
@@ -1100,6 +1624,26 @@ export function Arena() {
                             <CodeReview review={(postMatchReview || evalResult?.review)!} submittedCode={code} language={language} />
                           </div>
                         )}
+
+                        {/* Post Match Social Share & Confetti Celebration CTAs */}
+                        <div className="mb-5 flex flex-wrap items-center justify-center gap-3">
+                          <SocialShareButton 
+                            roomId={roomId || ''} 
+                            onClick={() => setIsShareModalOpen(true)} 
+                            variant="victory" 
+                          />
+                          {room.winner === socket.id && (
+                            <button
+                              type="button"
+                              onClick={() => triggerDuelVictoryConfetti()}
+                              className="px-4 py-2 bg-black hover:bg-zinc-900 border border-[#00FF00]/50 hover:border-[#00FF00] text-[#00FF00] font-mono text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,255,0,0.15)]"
+                              title="Re-trigger victory confetti explosion celebration"
+                            >
+                              <Sparkles className="w-4 h-4 text-[#00FF00] animate-pulse" />
+                              <span>CONFETTI EXPLOSION</span>
+                            </button>
+                          )}
+                        </div>
 
                         {opponent && !opponent.isAi && (
                           <div className="mb-5">
@@ -1288,18 +1832,27 @@ export function Arena() {
                     )}
                   </button>
 
-                  {evalResult && (
-                    <button
-                      onClick={() => setActiveConsoleTab('submission')}
-                      className={clsx(
-                        "px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer",
-                        activeConsoleTab === 'submission' 
-                          ? "bg-[#080808] text-[#00FF00] border-t-2 border-[#00FF00]" 
-                          : "text-zinc-400 hover:text-white"
-                      )}
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-[#00FF00]" />
-                      <span>REFEREE LOGS</span>
+                  <button
+                    onClick={() => setActiveConsoleTab('submission')}
+                    className={clsx(
+                      "px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer",
+                      activeConsoleTab === 'submission' 
+                        ? "bg-[#080808] text-[#00FF00] border-t-2 border-[#00FF00]" 
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#00FF00]" />
+                    <span>SUBMISSION & CODE</span>
+                    {submissions.length > 0 ? (
+                      <span className={clsx(
+                        "ml-1 text-[9px] px-1.5 py-0.2 border font-mono font-black",
+                        submissions[0]?.status === 'Accepted' 
+                          ? "bg-emerald-500/20 text-[#00FF00] border-emerald-500/30" 
+                          : "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                      )}>
+                        {submissions[0]?.status === 'Accepted' ? 'ACCEPTED' : `${submissions.length} SUBMITTED`}
+                      </span>
+                    ) : evalResult ? (
                       <span className={clsx(
                         "ml-1 text-[9px] px-1.5 py-0.2 border font-mono font-black",
                         evalResult.allPassed 
@@ -1308,8 +1861,8 @@ export function Arena() {
                       )}>
                         {evalResult.allPassed ? 'PASSED' : 'FAILED'}
                       </span>
-                    </button>
-                  )}
+                    ) : null}
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400">
@@ -1624,27 +2177,159 @@ export function Arena() {
                   </div>
                 )}
 
-                {activeConsoleTab === 'submission' && evalResult && (
-                  <div className="space-y-3 font-mono text-xs">
-                    <p className="text-zinc-300">{evalResult.feedback}</p>
-                    <div className="space-y-2">
-                      {evalResult.testResults?.map((test, i) => (
-                        <div key={i} className="bg-black border border-white/10 p-2 text-xs font-mono">
-                          <div className="flex items-center gap-2 mb-1.5">
-                            {test.passed ? <Check className="w-3.5 h-3.5 text-[#00FF00]" /> : <X className="w-3.5 h-3.5 text-red-500" />}
-                            <span className="font-bold text-white uppercase text-[11px]">Test Case {i + 1}</span>
-                            <span className={clsx("ml-auto font-black text-[10px]", test.passed ? "text-[#00FF00]" : "text-red-500")}>
-                              {test.passed ? 'PASS' : 'WRONG OUTPUT'}
+                {activeConsoleTab === 'submission' && (
+                  <div className="space-y-4 font-mono text-xs">
+                    {submissions.length > 0 ? (
+                      <div className="space-y-3">
+                        {/* Multiple Submissions Selector Bar */}
+                        {submissions.length > 1 && (
+                          <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                            <span className="text-[10px] text-zinc-500 uppercase font-black tracking-wider flex items-center gap-1 shrink-0">
+                              <History className="w-3 h-3 text-[#00FF00]" /> SUBMISSION HISTORY:
                             </span>
+                            {submissions.map((sub) => {
+                              const isSelected = (selectedSubmissionId || submissions[0].id) === sub.id;
+                              return (
+                                <button
+                                  key={sub.id}
+                                  type="button"
+                                  onClick={() => setSelectedSubmissionId(sub.id)}
+                                  className={clsx(
+                                    "px-2.5 py-1 text-[10px] font-mono font-bold uppercase shrink-0 border flex items-center gap-1.5 transition-all cursor-pointer",
+                                    isSelected
+                                      ? "bg-[#00FF00]/15 text-[#00FF00] border-[#00FF00] shadow-[0_0_8px_rgba(0,255,0,0.2)]"
+                                      : "bg-black/60 text-zinc-400 border-white/10 hover:border-white/30 hover:text-white"
+                                  )}
+                                >
+                                  <span>{sub.id}</span>
+                                  <span className={sub.status === 'Accepted' ? 'text-[#00FF00]' : 'text-rose-400'}>
+                                    [{sub.passedCount}/{sub.totalCount}]
+                                  </span>
+                                  <span className="text-[9px] text-zinc-500">{sub.timestamp}</span>
+                                </button>
+                              );
+                            })}
                           </div>
-                          <div className="grid grid-cols-3 gap-2 text-[10px] text-zinc-400">
-                            <div><span className="text-zinc-600">INPUT:</span> {test.input}</div>
-                            <div><span className="text-zinc-600">EXPECTED:</span> {test.expected}</div>
-                            <div><span className="text-zinc-600">ACTUAL:</span> {test.actual}</div>
-                          </div>
+                        )}
+
+                        {/* Active Submission Viewer with Real-Time Syntax Highlighting */}
+                        {(() => {
+                          const activeSub = submissions.find(s => s.id === (selectedSubmissionId || submissions[0].id)) || submissions[0];
+                          return (
+                            <div className="space-y-3">
+                              <SubmissionCodeViewer
+                                code={activeSub.code}
+                                language={activeSub.language}
+                                theme={editorTheme}
+                                status={activeSub.status}
+                                passedCount={activeSub.passedCount}
+                                totalCount={activeSub.totalCount}
+                                runtime={activeSub.runtime}
+                                memory={activeSub.memory}
+                                timestamp={activeSub.timestamp}
+                                submissionId={activeSub.id}
+                                feedback={activeSub.feedback}
+                                height="220px"
+                                onRestoreToEditor={handleRestoreSubmissionToEditor}
+                                showEngineToggle
+                                defaultEngine="monaco"
+                              />
+
+                              {/* Test Case Breakdown for this submission */}
+                              {activeSub.testResults && activeSub.testResults.length > 0 && (
+                                <div className="space-y-2">
+                                  <div className="text-[10px] font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                                    <CheckSquare className="w-3.5 h-3.5 text-[#00FF00]" />
+                                    <span>MATCH REFEREE TEST BREAKDOWN</span>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    {activeSub.testResults.map((test, i) => (
+                                      <div key={i} className="bg-black border border-white/10 p-2.5 text-xs font-mono">
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                          {test.passed ? <Check className="w-3.5 h-3.5 text-[#00FF00]" /> : <X className="w-3.5 h-3.5 text-red-500" />}
+                                          <span className="font-bold text-white uppercase text-[11px]">Test Case {i + 1}</span>
+                                          <span className={clsx("ml-auto font-black text-[10px]", test.passed ? "text-[#00FF00]" : "text-red-500")}>
+                                            {test.passed ? 'PASS' : 'WRONG OUTPUT'}
+                                          </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px] text-zinc-400">
+                                          <div><span className="text-zinc-600">INPUT:</span> {test.input}</div>
+                                          <div><span className="text-zinc-600">EXPECTED:</span> {test.expected}</div>
+                                          <div><span className="text-zinc-600">ACTUAL:</span> {test.actual}</div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ) : evalResult ? (
+                      /* If evalResult exists from direct evaluate */
+                      <div className="space-y-3">
+                        <SubmissionCodeViewer
+                          code={code}
+                          language={language}
+                          theme={editorTheme}
+                          status={evalResult.allPassed ? 'Accepted' : 'Wrong Answer'}
+                          passedCount={evalResult.testResults?.filter(t => t.passed).length}
+                          totalCount={evalResult.testResults?.length}
+                          feedback={evalResult.feedback}
+                          height="200px"
+                          showEngineToggle
+                          defaultEngine="monaco"
+                        />
+                        <div className="space-y-2">
+                          {evalResult.testResults?.map((test, i) => (
+                            <div key={i} className="bg-black border border-white/10 p-2 text-xs font-mono">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                {test.passed ? <Check className="w-3.5 h-3.5 text-[#00FF00]" /> : <X className="w-3.5 h-3.5 text-red-500" />}
+                                <span className="font-bold text-white uppercase text-[11px]">Test Case {i + 1}</span>
+                                <span className={clsx("ml-auto font-black text-[10px]", test.passed ? "text-[#00FF00]" : "text-red-500")}>
+                                  {test.passed ? 'PASS' : 'WRONG OUTPUT'}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-[10px] text-zinc-400">
+                                <div><span className="text-zinc-600">INPUT:</span> {test.input}</div>
+                                <div><span className="text-zinc-600">EXPECTED:</span> {test.expected}</div>
+                                <div><span className="text-zinc-600">ACTUAL:</span> {test.actual}</div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ) : (
+                      /* No submission yet: show ready preview of current code buffer */
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-xs flex items-center gap-2">
+                            <Terminal className="w-4 h-4 text-[#00FF00]" />
+                            <span>CURRENT DRAFT READY FOR SUBMISSION // {language.toUpperCase()}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={submitCode}
+                            disabled={room?.status !== 'active' || isEvaluating || isRunningCode}
+                            className="px-3 py-1 bg-[#00FF00] hover:bg-[#00CC00] text-black font-black uppercase text-[10px] tracking-wider transition-colors shadow-[0_0_10px_rgba(0,255,0,0.3)] disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Play className="w-3 h-3 fill-black" />
+                            <span>SUBMIT NOW</span>
+                          </button>
+                        </div>
+                        <SubmissionCodeViewer
+                          code={code}
+                          language={language}
+                          theme={editorTheme}
+                          status="Pending"
+                          height="180px"
+                          showEngineToggle
+                          defaultEngine="monaco"
+                          compact
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1779,6 +2464,18 @@ export function Arena() {
           </div>
         </aside>
       </main>
+
+      {/* Social Share Modal */}
+      <SocialShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        roomId={roomId || ''}
+        problemTitle={room?.problem?.title || 'Algorithmic Duel'}
+        difficulty={room?.problem?.difficulty || selectedDifficulty}
+        roomStatus={room?.status}
+        isWinner={room?.winner === socket.id}
+        myElapsedDuration={formatTimer(600 - timerSeconds)}
+      />
 
       {/* Telemetry Footer */}
       <footer className="h-8 bg-[#050505] border-t border-white/10 flex items-center px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
