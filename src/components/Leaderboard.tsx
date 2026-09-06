@@ -53,16 +53,37 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
       if (accountProfile?.username || currentUser?.name) params.set('currentUser', accountProfile?.username || currentUser.name);
 
-      const res = await fetch(apiUrl(`/api/leaderboard?${params.toString()}`));
-      if (res.ok) {
+      const queryStr = params.toString();
+      const targetUrl = apiUrl(`/api/leaderboard?${queryStr}`);
+      let res: Response | null = null;
+      try {
+        res = await fetch(targetUrl);
+      } catch (networkErr) {
+        if (targetUrl.startsWith('http')) {
+          try {
+            res = await fetch(`/api/leaderboard?${queryStr}`);
+          } catch {
+            // ignore fallback error
+          }
+        }
+        if (!res) throw networkErr;
+      }
+
+      if (res && res.ok) {
         const data: LeaderboardResponse = await res.json();
-        setLeaderboard(data.leaderboard);
+        setLeaderboard(data.leaderboard || []);
         setMeta(data.meta);
         setLivePulse(true);
         setTimeout(() => setLivePulse(false), 1200);
       }
     } catch (err) {
-      console.error('Failed to fetch leaderboard standings:', err);
+      console.warn('Leaderboard update unavailable:', err);
+      // Auto-retry once after 1.5s if initial load failed during startup
+      if (showLoadingSpinner) {
+        setTimeout(() => {
+          fetchLeaderboard(false);
+        }, 1500);
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

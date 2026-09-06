@@ -2,14 +2,27 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { socket } from '../socket';
 import { useStore } from '../store';
-import { RoomState, ChatMessage, EvaluationResult } from '../types';
+import { RoomState, ChatMessage, EvaluationResult, RunCodeResponse, RunTestCaseResult } from '../types';
 import Editor from '@monaco-editor/react';
-import { Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, Code2, Flag } from 'lucide-react';
+import { 
+  Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, 
+  Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, 
+  Code2, Flag, Zap, ChevronUp, ChevronDown, Copy, CheckCheck, Plus, 
+  Clock, Cpu, AlertCircle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
+import { ConnectionStatus, useConnectionStatus } from '../components/ConnectionStatus';
+import { EditorThemeSelector } from '../components/EditorThemeSelector';
+import { getStoredTheme, saveStoredTheme, registerMonacoThemes } from '../lib/editorThemes';
+import { SoundToggle } from '../components/SoundToggle';
+import { soundManager } from '../lib/soundEffects';
+import { SolutionDiffViewer } from '../components/SolutionDiffViewer';
+import { ExpectedSolutionsViewer } from '../components/ExpectedSolutionsViewer';
+import { LineByLineAnalyzer } from '../components/LineByLineAnalyzer';
 import { apiUrl } from '../api';
 
 const STARTER_TEMPLATES: Record<string, string> = {
@@ -89,6 +102,14 @@ export function Arena() {
   const [code, setCode] = useState(STARTER_TEMPLATES[queryLang && STARTER_TEMPLATES[queryLang] ? queryLang : 'javascript']);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evalResult, setEvalResult] = useState<EvaluationResult | null>(null);
+  const [isRunningCode, setIsRunningCode] = useState(false);
+  const [runResults, setRunResults] = useState<RunCodeResponse | null>(null);
+  const [activeConsoleTab, setActiveConsoleTab] = useState<'cases' | 'terminal' | 'submission'>('cases');
+  const [selectedCaseIdx, setSelectedCaseIdx] = useState<number>(0);
+  const [customInput, setCustomInput] = useState('');
+  const [customExpected, setCustomExpected] = useState('');
+  const [isConsoleExpanded, setIsConsoleExpanded] = useState(true);
+  const [copiedConsole, setCopiedConsole] = useState(false);
   const [myProgress, setMyProgress] = useState(0);
   const [timerSeconds, setTimerSeconds] = useState(600); // 10:00 timer
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>(queryDiff || 'medium');
@@ -97,11 +118,22 @@ export function Arena() {
   const [recentHint, setRecentHint] = useState<string | null>(null);
   const [matchEndReason, setMatchEndReason] = useState<string | null>(null);
   const [postMatchReview, setPostMatchReview] = useState<EvaluationResult['review'] | null>(null);
+  const [matchOverCodes, setMatchOverCodes] = useState<Record<string, { code: string; language: string; name: string }>>({});
+  const [postMatchTab, setPostMatchTab] = useState<'summary' | 'diff' | 'expected' | 'doctor'>('summary');
+  const [diffExpectedOverride, setDiffExpectedOverride] = useState<string | null>(null);
   const [isForfeiting, setIsForfeiting] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [editorTheme, setEditorTheme] = useState<string>(getStoredTheme);
+
+  const handleThemeChange = (newTheme: string) => {
+    setEditorTheme(newTheme);
+    saveStoredTheme(newTheme);
+  };
   
+  const { status: connectionStatus, reconnect: reconnectSocket } = useConnectionStatus();
   const chatEndRef = useRef<HTMLDivElement>(null);
   const autoSummonedRef = useRef(false);
+  const prevRoomStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
     socket.connect();
@@ -111,10 +143,21 @@ export function Arena() {
       user: currentUser,
       mode: isPracticeMode ? 'practice' : 'duel',
       topic: selectedTopic,
+      difficulty: selectedDifficulty,
     });
 
     socket.on('room_state_update', (state: RoomState) => {
+      if (prevRoomStatusRef.current === 'waiting' && state.status === 'active') {
+        soundManager.playMatchStart();
+      }
+      prevRoomStatusRef.current = state.status;
       setRoom(state);
+      if (state.difficulty && (state.difficulty === 'easy' || state.difficulty === 'medium' || state.difficulty === 'hard')) {
+        setSelectedDifficulty(state.difficulty);
+      }
+      if (state.topic) {
+        setSelectedTopic(state.topic);
+      }
     });
 
     socket.on('chat_message', (msg: ChatMessage) => {
@@ -126,6 +169,7 @@ export function Arena() {
     });
 
     socket.on('match_started', () => {
+      soundManager.playMatchStart();
       setChat(prev => [...prev, { system: true, text: 'MATCH COMMENCED // TIMER ENGAGED' }]);
       setEvalResult(null);
       setMyProgress(0);
@@ -136,19 +180,25 @@ export function Arena() {
       // room state handles updates
     });
     
-     socket.on('match_over', ({ winner, reason, reviewByUserId }) => {
+     socket.on('match_over', ({ winner, reason, reviewByUserId, codeByUserId }) => {
+       if (winner && winner.id === socket.id) {
+         soundManager.playMatchWon();
+       }
        setMatchEndReason(reason || null);
        setPostMatchReview(reviewByUserId?.[socket.id!] || null);
+       if (codeByUserId) {
+         setMatchOverCodes(codeByUserId);
+       }
        setChat(prev => [...prev, { system: true, text: `MATCH TERMINATED // ${winner.name} WINS` }]);
     });
 
     return () => {
+      socket.emit('leave_room', { roomId });
       socket.off('room_state_update');
       socket.off('chat_message');
       socket.off('match_started');
       socket.off('opponent_progress');
       socket.off('match_over');
-      socket.disconnect();
     };
   }, [roomId, currentUser, isPracticeMode, selectedTopic]);
 
@@ -264,10 +314,76 @@ export function Arena() {
     setChatInput('');
   };
 
+  const runCode = async () => {
+    if (!room?.problem || isRunningCode || isEvaluating) return;
+    setIsRunningCode(true);
+    setIsConsoleExpanded(true);
+    setActiveConsoleTab('cases');
+
+    const sampleCases: Array<{ id: number | string; input: string; expected: string }> = (room.problem.examples || []).map((ex, idx) => ({
+      id: idx + 1,
+      input: ex.input,
+      expected: ex.output,
+    }));
+
+    if (customInput.trim()) {
+      sampleCases.push({
+        id: 'custom',
+        input: customInput.trim(),
+        expected: customExpected.trim(),
+      });
+    }
+
+    try {
+      const res = await fetch(apiUrl('/api/run-code'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          language,
+          testCases: sampleCases,
+        }),
+      });
+
+      const data: RunCodeResponse = await res.json();
+      setRunResults(data);
+      if (data.allPassed) {
+        soundManager.playTestPassed();
+      } else {
+        soundManager.playTestFailed();
+      }
+    } catch (error) {
+      console.error('Run code failed:', error);
+      soundManager.playTestFailed();
+      setRunResults({
+        success: false,
+        allPassed: false,
+        passedCount: 0,
+        totalCount: sampleCases.length,
+        executionEngine: 'AlgoArena Execution Error',
+        results: sampleCases.map(tc => ({
+          id: tc.id,
+          input: tc.input,
+          expected: tc.expected,
+          actual: 'Execution Error',
+          passed: false,
+          stdout: '',
+          stderr: 'Could not connect to external code execution sandbox.',
+          status: 'Runtime Error',
+        })),
+        error: 'Execution failed',
+      });
+    } finally {
+      setIsRunningCode(false);
+    }
+  };
+
   const submitCode = async () => {
-    if (!room?.problem) return;
+    if (!room?.problem || isEvaluating || isRunningCode) return;
     setIsEvaluating(true);
     setEvalResult(null);
+    setIsConsoleExpanded(true);
+    setActiveConsoleTab('submission');
     
     try {
       const res = await fetch(apiUrl('/api/evaluate'), {
@@ -282,6 +398,11 @@ export function Arena() {
       
       const result: EvaluationResult = await res.json();
       setEvalResult(result);
+      if (result.allPassed) {
+        soundManager.playMatchWon();
+      } else {
+        soundManager.playTestFailed();
+      }
 
       socket.emit('match_code_snapshot', {
         roomId,
@@ -317,6 +438,7 @@ export function Arena() {
       
     } catch (error) {
       console.error('Evaluation failed', error);
+      soundManager.playTestFailed();
       setEvalResult({
         allPassed: false,
         feedback: 'Evaluation service error.',
@@ -327,10 +449,32 @@ export function Arena() {
     }
   };
 
+  // Keyboard shortcut listener: Ctrl+Enter (Run Code) and Ctrl+Shift+Enter (Submit Solution)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isChatInput = target?.tagName === 'INPUT' && (target as HTMLInputElement).placeholder?.toLowerCase().includes('chat');
+      if (isChatInput) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          submitCode();
+        } else {
+          runCode();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [code, language, room?.problem, isRunningCode, isEvaluating, customInput, customExpected, timerSeconds]);
+
   if (!room) {
     return (
-      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-[#00FF00] font-mono">
-        <Loader2 className="w-8 h-8 animate-spin mb-3" />
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-[#00FF00] font-mono gap-3">
+        <ConnectionStatus />
+        <Loader2 className="w-8 h-8 animate-spin my-2 text-[#00FF00]" />
         <span className="text-xs uppercase tracking-widest font-black">CONNECTING TO ARENA NODE...</span>
       </div>
     );
@@ -356,13 +500,17 @@ export function Arena() {
             <span className="text-[#00FF00] font-black text-lg sm:text-xl tracking-tighter uppercase">
               ALGOARENA // MATCH
             </span>
-            <span className="bg-[#00FF00]/10 text-[#00FF00] text-[10px] px-2 py-0.5 border border-[#00FF00]/30 font-mono uppercase font-bold">
+            <span className="bg-[#00FF00]/10 text-[#00FF00] text-[10px] px-2 py-0.5 border border-[#00FF00]/30 font-mono uppercase font-bold hidden md:inline-block">
               Room: #{roomId}
             </span>
+            <ConnectionStatus />
           </div>
         </div>
         
-        <div className="flex items-center gap-6 sm:gap-8">
+        <div className="flex items-center gap-4 sm:gap-6">
+          {/* Audio Feedback Toggle */}
+          <SoundToggle />
+
           {/* Match Timer */}
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
@@ -445,6 +593,28 @@ export function Arena() {
         </div>
       </nav>
 
+      {/* Real-time Connection Drop Warning Alert Banner */}
+      {connectionStatus === 'Disconnected' && (
+        <div 
+          id="arena-connection-lost-banner"
+          className="bg-rose-950/90 border-b border-rose-500/50 px-4 py-2 flex items-center justify-between text-rose-300 font-mono text-xs z-30 shadow-[0_4px_12px_rgba(244,63,94,0.2)] animate-pulse"
+        >
+          <div className="flex items-center gap-2">
+            <WifiOff className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="font-bold uppercase tracking-wider text-[11px]">
+              WEBSOCKET DISCONNECTED // Real-time match telemetry paused. Attempting reconnection to room #{roomId}...
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={reconnectSocket}
+            className="px-3 py-1 bg-rose-500 hover:bg-rose-400 text-black font-black uppercase text-[10px] tracking-wider transition-colors cursor-pointer"
+          >
+            RECONNECT NOW
+          </button>
+        </div>
+      )}
+
       {/* Main Content Layout (3-Column Grid) */}
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-[330px_1fr_300px] overflow-hidden">
         
@@ -461,93 +631,80 @@ export function Arena() {
 
           <div className="p-6 overflow-y-auto flex-1 custom-scrollbar flex flex-col gap-6">
             {room.status === 'waiting' ? (
-              <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 space-y-4 my-auto p-4">
-                <div className="w-14 h-14 bg-black border border-[#00FF00]/30 flex items-center justify-center shadow-[0_0_20px_rgba(0,255,0,0.15)]">
-                  {isPracticeMode ? (
-                    <Bot className="w-7 h-7 text-[#00FF00]" />
+              <div className="flex flex-col space-y-4 text-left">
+                {/* Lobby Status Header */}
+                <div className="flex items-center gap-3 p-3 bg-black border border-[#00FF00]/30 shadow-[0_0_15px_rgba(0,255,0,0.1)]">
+                  <div className="w-10 h-10 bg-[#00FF00]/10 border border-[#00FF00]/40 flex items-center justify-center shrink-0">
+                    {isPracticeMode ? (
+                      <Bot className="w-5 h-5 text-[#00FF00]" />
+                    ) : (
+                      <Sparkles className="w-5 h-5 text-[#00FF00]" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-mono text-xs uppercase font-black text-white tracking-wider flex items-center gap-1.5">
+                      <span>{isPracticeMode ? 'DSA PRACTICE MATRIX' : 'ARENA LOBBY ACTIVE'}</span>
+                      <span className="w-2 h-2 rounded-full bg-[#00FF00] animate-pulse" />
+                    </h3>
+                    <p className="text-[10px] font-mono text-zinc-400 mt-0.5">
+                      {opponents.length === 0 
+                        ? 'Awaiting challenger. Summon AI bot or share invite link.' 
+                        : `${opponent?.name} connected. Hit Ready to commence.`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions: Bot Summon & Invite */}
+                <div className="space-y-2 pt-2 border-t border-white/10">
+                  {opponents.length === 0 ? (
+                    <>
+                      {isPracticeMode && (
+                        <button
+                          onClick={summonAlgoArenaBot}
+                          className="w-full py-2 bg-[#00FF00] hover:bg-[#00DD00] text-black font-mono text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(0,255,0,0.3)]"
+                        >
+                          <Bot className="w-4 h-4" />
+                          PLAY WITH ALGOARENA BOT
+                        </button>
+                      )}
+
+                      <button
+                        onClick={summonAiBot}
+                        className="w-full py-2 bg-[#00FF00]/10 border border-[#00FF00]/40 hover:bg-[#00FF00]/20 text-[#00FF00] font-mono text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        SUMMON GEMINI DUEL BOT
+                      </button>
+
+                      {!isPracticeMode && (
+                        <button
+                          type="button"
+                          onClick={copyInviteLink}
+                          className="w-full py-1.5 bg-black border border-white/15 text-zinc-300 hover:border-[#00FF00] hover:text-[#00FF00] font-mono text-[10px] font-bold uppercase flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Code2 className="w-3.5 h-3.5" />
+                          {inviteCopied ? 'INVITE LINK COPIED TO CLIPBOARD' : 'COPY 1V1 INVITE LINK'}
+                        </button>
+                      )}
+                    </>
                   ) : (
-                    <Sparkles className="w-7 h-7 text-[#00FF00]" />
+                    <div className="p-3 bg-black border border-white/15 font-mono text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 font-bold uppercase">OPPONENT:</span>
+                        <span className="text-white font-black uppercase">{opponent?.name}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 font-bold uppercase">STATUS:</span>
+                        <span className={clsx("font-bold uppercase", opponent?.ready ? "text-[#00FF00]" : "text-amber-400")}>
+                          {opponent?.ready ? 'READY FOR DUEL' : 'NOT READY YET'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 pt-1 border-t border-white/10">
+                        Both players must press <span className="text-[#00FF00] font-bold">"HIT READY [F5]"</span> in the top right to generate the problem via Gemini.
+                      </p>
+                    </div>
                   )}
                 </div>
-                <div>
-                  <p className="font-mono text-xs uppercase font-bold text-zinc-200">
-                    {isPracticeMode ? 'DSA PRACTICE ARENA ACTIVE' : 'ARENA LOBBY ACTIVE'}
-                  </p>
-                  <p className="text-[11px] font-mono text-zinc-400 mt-1 max-w-[240px] leading-relaxed">
-                    {opponents.length === 0 
-                      ? 'No challenger detected. Engage AlgoArena Bot for interactive DSA drills with real-time hints, or summon a Gemini duel bot.'
-                      : `${opponent?.name} connected. Ready up to initialize algorithmic test cases.`}
-                  </p>
-                {room.status === 'waiting' && !isPracticeMode && (
-                  <button
-                    type="button"
-                    onClick={copyInviteLink}
-                    className="w-full max-w-[260px] py-2 bg-[#00FF00]/10 border border-[#00FF00]/50 text-[#00FF00] hover:bg-[#00FF00]/20 font-mono text-[11px] font-black uppercase flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <Code2 className="w-3.5 h-3.5" />
-                    {inviteCopied ? 'INVITE LINK COPIED' : 'COPY 1V1 INVITE LINK'}
-                  </button>
-                )}
-                </div>
-
-                {/* AI & Bot Summon Controls */}
-                {opponents.length === 0 && (
-                  <div className="w-full max-w-[260px] pt-2 space-y-3">
-                    <button
-                      onClick={summonAlgoArenaBot}
-                      className="w-full py-2.5 bg-[#00FF00] hover:bg-[#00DD00] text-black font-mono text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(0,255,0,0.3)]"
-                    >
-                      <Bot className="w-4 h-4" />
-                      PLAY WITH ALGOARENA BOT
-                    </button>
-
-                    <button
-                      onClick={summonAiBot}
-                      className="w-full py-2 bg-[#00FF00]/10 border border-[#00FF00]/40 hover:bg-[#00FF00]/20 text-[#00FF00] font-mono text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      SUMMON GEMINI DUEL BOT
-                    </button>
-
-                    <div className="space-y-2 pt-1 border-t border-white/10 text-left">
-                      <div className="flex items-center justify-between font-mono text-[10px]">
-                        <span className="text-zinc-500">DSA TOPIC:</span>
-                        <select
-                          value={selectedTopic}
-                          onChange={e => setSelectedTopic(e.target.value)}
-                          className="bg-black text-[#00FF00] border border-white/10 px-2 py-0.5 text-[10px] font-mono uppercase outline-none"
-                        >
-                          <option value="Arrays & Strings">Arrays & Strings</option>
-                          <option value="Dynamic Programming">Dynamic Programming</option>
-                          <option value="Trees & Graphs">Trees & Graphs</option>
-                          <option value="Backtracking">Backtracking</option>
-                          <option value="Binary Search">Binary Search</option>
-                          <option value="Greedy Algorithms">Greedy Algorithms</option>
-                        </select>
-                      </div>
-
-                      <div className="flex items-center justify-between font-mono text-[10px]">
-                        <span className="text-zinc-500">DIFFICULTY:</span>
-                        <div className="flex gap-1">
-                          {(['easy', 'medium', 'hard'] as const).map(diff => (
-                            <button
-                              key={diff}
-                              onClick={() => setSelectedDifficulty(diff)}
-                              className={clsx(
-                                "px-2 py-0.5 border uppercase font-bold cursor-pointer transition-colors text-[10px]",
-                                selectedDifficulty === diff 
-                                  ? "bg-[#00FF00] text-black border-[#00FF00]" 
-                                  : "bg-black text-zinc-400 border-white/10 hover:border-white/30"
-                              )}
-                            >
-                              {diff}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             ) : room.problem ? (
               <div className="space-y-6">
@@ -718,7 +875,18 @@ export function Arena() {
               <span className="text-zinc-500">RUNTIME_ENV</span>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              {/* Theme Selector */}
+              <EditorThemeSelector 
+                currentTheme={editorTheme} 
+                onSelectTheme={handleThemeChange} 
+              />
+
+              {/* Sound FX Toggle */}
+              <SoundToggle compact />
+
+              <div className="h-4 w-px bg-white/10 hidden sm:block" />
+
               <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-tighter hidden sm:inline">
                 LANGUAGE
               </span>
@@ -748,7 +916,8 @@ export function Arena() {
                 language === 'python' ? 'python' :
                 language === 'typescript' ? 'typescript' : 'javascript'
               }
-              theme="vs-dark"
+              theme={editorTheme}
+              beforeMount={registerMonacoThemes}
               value={code}
               onChange={val => setCode(val || '')}
               options={{
@@ -764,13 +933,13 @@ export function Arena() {
             
             {/* Overlay if waiting */}
             {room.status === 'waiting' && (
-              <div className="absolute inset-0 bg-[#050505]/85 backdrop-blur-xs flex flex-col items-center justify-center z-10 font-mono">
+              <div className="absolute inset-0 bg-[#050505]/90 backdrop-blur-xs flex flex-col items-center justify-center z-10 font-mono p-6 text-center">
                 <Terminal className="w-8 h-8 text-[#00FF00] mb-3 animate-pulse" />
                 <div className="text-white text-sm font-black uppercase tracking-widest">
                   TERMINAL LOCKED // AWAITING DUEL START
                 </div>
-                <div className="text-xs text-zinc-500 uppercase mt-1">
-                  Hit Ready Up to prompt matching
+                <div className="text-xs text-[#00FF00] uppercase mt-4 font-black tracking-wider">
+                  {me?.ready ? '✓ YOU ARE READY // WAITING FOR OPPONENT' : 'HIT "HIT READY [F5]" IN TOP RIGHT TO COMMENCE'}
                 </div>
               </div>
             )}
@@ -779,111 +948,705 @@ export function Arena() {
             <AnimatePresence>
               {room.status === 'finished' && (
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-20 p-6 text-center"
+                  className="absolute inset-0 bg-[#060606]/95 backdrop-blur-md flex flex-col z-30 overflow-hidden"
                 >
-                  <Trophy className={clsx(
-                    "w-20 h-20 mb-4", 
-                    room.winner === socket.id 
-                      ? "text-[#00FF00] drop-shadow-[0_0_25px_rgba(0,255,0,0.6)]" 
-                      : "text-zinc-600"
-                  )} />
-                  <h2 className="text-5xl font-black italic uppercase tracking-tighter text-white mb-2">
-                    {room.winner === socket.id ? 'MATCH WON' : 'DEFEAT'}
-                  </h2>
-                  <p className="text-zinc-400 font-mono text-sm mb-6 uppercase tracking-wider">
-                    {matchEndReason === 'forfeit'
-                      ? 'The match ended by forfeit. The remaining player receives the victory.'
-                      : matchEndReason === 'disconnect'
-                        ? 'The match ended because a player disconnected. The remaining player receives the victory.'
-                        : room.winner === socket.id ? 'All test cases verified. ELO +25 Points.' : 'Opponent completed solution first.'}
-                  </p>
-                  {(postMatchReview || evalResult?.review) && (
-                    <div className="w-full max-w-3xl mb-5 text-left max-h-[42vh] overflow-y-auto">
-                      <CodeReview review={(postMatchReview || evalResult?.review)!} submittedCode={code} language={language} />
+                  {/* Top Post-Match Navigation Header */}
+                  <div className="bg-[#0f0f0f] border-b border-white/10 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <Trophy className={clsx(
+                        "w-5 h-5", 
+                        room.winner === socket.id ? "text-[#00FF00] drop-shadow-[0_0_8px_rgba(0,255,0,0.5)]" : "text-zinc-500"
+                      )} />
+                      <span className="font-mono font-black text-sm uppercase tracking-wider text-white">
+                        {room.winner === socket.id ? 'MATCH WON' : 'DEFEAT'}
+                      </span>
+                      <span className="text-zinc-600 text-xs font-mono">|</span>
+                      <span className="text-xs font-mono font-bold text-zinc-400">
+                        {room.winner === socket.id ? '+25 ELO' : '0 ELO'}
+                      </span>
                     </div>
-                  )}
-                  {opponent && !opponent.isAi && (
-                    <div className="mb-5">
-                      <FriendActions username={opponent.name} showProfileLink />
+
+                    {/* Post-Match Tab Navigation */}
+                    <div className="flex items-center bg-black/60 border border-white/10 rounded-md p-0.5">
+                      <button
+                        onClick={() => setPostMatchTab('summary')}
+                        className={clsx(
+                          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded transition-all",
+                          postMatchTab === 'summary'
+                            ? "bg-white/20 text-white font-bold shadow-sm"
+                            : "text-zinc-400 hover:text-white"
+                        )}
+                      >
+                        <Trophy className="w-3.5 h-3.5" />
+                        <span>Summary</span>
+                      </button>
+
+                      <button
+                        onClick={() => setPostMatchTab('diff')}
+                        className={clsx(
+                          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded transition-all",
+                          postMatchTab === 'diff'
+                            ? "bg-[#00FF00]/20 text-[#00FF00] font-bold border border-[#00FF00]/30 shadow-sm"
+                            : "text-zinc-400 hover:text-white"
+                        )}
+                      >
+                        <GitCompare className="w-3.5 h-3.5" />
+                        <span>Show Solution Diff</span>
+                      </button>
+
+                      <button
+                        onClick={() => setPostMatchTab('expected')}
+                        className={clsx(
+                          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded transition-all",
+                          postMatchTab === 'expected'
+                            ? "bg-[#00FF00]/20 text-[#00FF00] font-bold border border-[#00FF00]/30 shadow-sm"
+                            : "text-zinc-400 hover:text-white"
+                        )}
+                      >
+                        <FileCode2 className="w-3.5 h-3.5" />
+                        <span>Expected Solutions</span>
+                      </button>
+
+                      <button
+                        onClick={() => setPostMatchTab('doctor')}
+                        className={clsx(
+                          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded transition-all",
+                          postMatchTab === 'doctor'
+                            ? "bg-[#00FF00]/20 text-[#00FF00] font-bold border border-[#00FF00]/30 shadow-sm"
+                            : "text-zinc-400 hover:text-white"
+                        )}
+                      >
+                        <Stethoscope className="w-3.5 h-3.5" />
+                        <span>Line-by-Line Fixes</span>
+                      </button>
                     </div>
-                  )}
-                  <button 
-                    onClick={() => navigate('/')} 
-                    className="px-8 py-3 bg-[#00FF00] text-black font-black uppercase text-xs tracking-widest hover:bg-[#00CC00] transition-colors shadow-[0_0_15px_rgba(0,255,0,0.3)]"
-                  >
-                    RETURN TO LADDER
-                  </button>
+
+                    <button 
+                      onClick={() => navigate('/')} 
+                      className="px-4 py-1.5 bg-[#00FF00] text-black font-black uppercase text-xs tracking-wider hover:bg-[#00CC00] transition-colors rounded shadow-[0_0_10px_rgba(0,255,0,0.3)]"
+                    >
+                      Return to Ladder
+                    </button>
+                  </div>
+
+                  {/* Body Content based on active postMatchTab */}
+                  <div className="flex-1 w-full overflow-y-auto p-4 flex flex-col">
+                    {postMatchTab === 'summary' && (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-4 max-w-4xl mx-auto w-full">
+                        <Trophy className={clsx(
+                          "w-16 h-16 mb-3", 
+                          room.winner === socket.id 
+                            ? "text-[#00FF00] drop-shadow-[0_0_25px_rgba(0,255,0,0.6)]" 
+                            : "text-zinc-600"
+                        )} />
+                        <h2 className="text-4xl font-black italic uppercase tracking-tighter text-white mb-2">
+                          {room.winner === socket.id ? 'MATCH WON' : 'DEFEAT'}
+                        </h2>
+                        <p className="text-zinc-400 font-mono text-sm mb-5 uppercase tracking-wider">
+                          {matchEndReason === 'forfeit'
+                            ? 'The match ended by forfeit. The remaining player receives the victory.'
+                            : matchEndReason === 'disconnect'
+                              ? 'The match ended because a player disconnected. The remaining player receives the victory.'
+                              : room.winner === socket.id ? 'All test cases verified. ELO +25 Points.' : 'Opponent completed solution first.'}
+                        </p>
+
+                        {/* Interactive Feature Callouts */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full mb-6 text-left">
+                          <button
+                            onClick={() => setPostMatchTab('diff')}
+                            className="p-3 bg-black/60 hover:bg-white/10 border border-white/10 hover:border-[#00FF00]/40 rounded-lg flex flex-col items-start gap-1 transition-all group"
+                          >
+                            <div className="flex items-center gap-2 text-white font-mono text-xs font-bold group-hover:text-[#00FF00]">
+                              <GitCompare className="w-4 h-4 text-[#00FF00]" />
+                              <span>Show Solution Diff</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 font-mono">
+                              Compare your submission side-by-side against opponent or canonical code.
+                            </p>
+                          </button>
+
+                          <button
+                            onClick={() => setPostMatchTab('expected')}
+                            className="p-3 bg-black/60 hover:bg-white/10 border border-white/10 hover:border-[#00FF00]/40 rounded-lg flex flex-col items-start gap-1 transition-all group"
+                          >
+                            <div className="flex items-center gap-2 text-white font-mono text-xs font-bold group-hover:text-[#00FF00]">
+                              <FileCode2 className="w-4 h-4 text-[#00FF00]" />
+                              <span>Expected Solutions</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 font-mono">
+                              Browse optimal reference implementations in all 8 languages.
+                            </p>
+                          </button>
+
+                          <button
+                            onClick={() => setPostMatchTab('doctor')}
+                            className="p-3 bg-black/60 hover:bg-white/10 border border-white/10 hover:border-[#00FF00]/40 rounded-lg flex flex-col items-start gap-1 transition-all group"
+                          >
+                            <div className="flex items-center gap-2 text-white font-mono text-xs font-bold group-hover:text-[#00FF00]">
+                              <Stethoscope className="w-4 h-4 text-[#00FF00]" />
+                              <span>Line-by-Line Fixes</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 font-mono">
+                              Deep code doctor diagnosis and line-by-line compiler corrections.
+                            </p>
+                          </button>
+                        </div>
+
+                        {(postMatchReview || evalResult?.review) && (
+                          <div className="w-full mb-5 text-left max-h-[35vh] overflow-y-auto">
+                            <CodeReview review={(postMatchReview || evalResult?.review)!} submittedCode={code} language={language} />
+                          </div>
+                        )}
+
+                        {opponent && !opponent.isAi && (
+                          <div className="mb-5">
+                            <FriendActions username={opponent.name} showProfileLink />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {postMatchTab === 'diff' && (
+                      <div className="h-full w-full flex-1 min-h-[450px]">
+                        <SolutionDiffViewer
+                          userCode={code}
+                          userLanguage={language}
+                          userName={currentUser.name || 'Your Code'}
+                          opponentCode={
+                            matchOverCodes[opponent?.id || '']?.code 
+                            || opponent?.submittedCode 
+                            || (room?.users && opponent?.id ? room.users[opponent.id]?.submittedCode : '')
+                            || ''
+                          }
+                          opponentLanguage={
+                            matchOverCodes[opponent?.id || '']?.language 
+                            || opponent?.submittedLanguage 
+                            || (room?.users && opponent?.id ? room.users[opponent.id]?.submittedLanguage : '') 
+                            || language
+                          }
+                          opponentName={opponent?.name || 'Opponent'}
+                          expectedSolution={diffExpectedOverride || postMatchReview?.expectedSolution || evalResult?.review?.expectedSolution || ''}
+                          theme={editorTheme}
+                          onThemeChange={handleThemeChange}
+                          onClose={() => setPostMatchTab('summary')}
+                        />
+                      </div>
+                    )}
+
+                    {postMatchTab === 'expected' && (
+                      <div className="h-full w-full flex-1 min-h-[450px]">
+                        <ExpectedSolutionsViewer
+                          problem={room.problem}
+                          userLanguage={language}
+                          theme={editorTheme}
+                          onCompareInDiff={(expectedCode) => {
+                            setDiffExpectedOverride(expectedCode);
+                            setPostMatchTab('diff');
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {postMatchTab === 'doctor' && (
+                      <div className="h-full w-full flex-1 min-h-[450px]">
+                        <LineByLineAnalyzer
+                          code={code}
+                          language={language}
+                          problem={room.problem}
+                          testResults={evalResult?.testResults}
+                          error={evalResult?.feedback}
+                          theme={editorTheme}
+                          onDiffFixedCode={(fixedCode) => {
+                            setDiffExpectedOverride(fixedCode);
+                            setPostMatchTab('diff');
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
           
           {/* Bottom Execution Bar */}
-          <div className="h-14 border-t border-white/10 flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0">
-            <div className="flex items-center gap-3 text-xs font-mono text-zinc-500">
-              <span className="text-[#00FF00] font-bold">STATUS:</span>
-              <span>{isEvaluating ? 'EXECUTING TEST SUITE...' : 'READY FOR EVALUATION'}</span>
+          <div className="h-14 border-t border-white/10 flex items-center justify-between px-4 sm:px-6 bg-[#0a0a0a] shrink-0">
+            <div className="flex items-center gap-3 text-xs font-mono text-zinc-500 overflow-hidden">
+              <span className="text-[#00FF00] font-bold shrink-0">STATUS:</span>
+              <span className="truncate">
+                {isRunningCode ? (
+                  <span className="text-[#00FF00] flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00FF00]" />
+                    RUNNING ON EXTERNAL ENGINE (JUDGE0)...
+                  </span>
+                ) : isEvaluating ? (
+                  <span className="text-amber-400 flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    EXECUTING TEST SUITE (REFEREE)...
+                  </span>
+                ) : runResults ? (
+                  <span className={clsx("font-bold", runResults.allPassed ? "text-[#00FF00]" : "text-rose-400")}>
+                    SAMPLE RUN: {runResults.passedCount}/{runResults.totalCount} PASSED {runResults.totalTimeMs ? `(${runResults.totalTimeMs}ms)` : ''}
+                  </span>
+                ) : (
+                  'READY FOR EXECUTION'
+                )}
+              </span>
             </div>
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={submitCode}
-                disabled={room.status !== 'active' || isEvaluating}
-                className="px-6 py-2 bg-zinc-800 text-white text-xs font-black uppercase tracking-widest border border-white/10 hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Console Toggle Button */}
+              <button
+                onClick={() => setIsConsoleExpanded(prev => !prev)}
+                className="px-3 py-2 bg-black hover:bg-zinc-900 border border-white/15 text-zinc-300 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Toggle Test Runner & Output Console"
               >
-                RUN LOCAL TESTS
+                <Terminal className="w-3.5 h-3.5 text-[#00FF00]" />
+                <span className="hidden sm:inline text-[11px] font-bold">CONSOLE</span>
+                {isConsoleExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
               </button>
+
+              {/* RUN CODE Button */}
+              <button 
+                onClick={runCode}
+                disabled={room.status !== 'active' || isRunningCode || isEvaluating}
+                className="px-4 sm:px-5 py-2 bg-[#121212] hover:bg-zinc-900 text-[#00FF00] text-xs font-mono font-bold uppercase tracking-wider border border-[#00FF00]/40 hover:border-[#00FF00] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer shadow-[0_0_10px_rgba(0,255,0,0.15)]"
+                title="Run code against sample test cases (Ctrl + Enter)"
+              >
+                {isRunningCode ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00FF00]" />
+                ) : (
+                  <Terminal className="w-3.5 h-3.5 text-[#00FF00]" />
+                )}
+                <span>RUN CODE</span>
+                <kbd className="hidden md:inline text-[9px] bg-black px-1.5 py-0.5 border border-white/10 text-zinc-400 font-normal">
+                  Ctrl+Enter
+                </kbd>
+              </button>
+
+              {/* SUBMIT SOLUTION Button */}
               <button 
                 onClick={submitCode}
-                disabled={room.status !== 'active' || isEvaluating}
-                className="px-8 py-2 bg-[#00FF00] text-black text-xs font-black uppercase tracking-widest hover:bg-[#00CC00] transition-colors shadow-[0_0_15px_rgba(0,255,0,0.3)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                disabled={room.status !== 'active' || isEvaluating || isRunningCode}
+                className="px-5 sm:px-7 py-2 bg-[#00FF00] text-black text-xs font-mono font-black uppercase tracking-wider hover:bg-[#00CC00] transition-colors shadow-[0_0_15px_rgba(0,255,0,0.3)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                title="Submit solution to match referee (Ctrl + Shift + Enter)"
               >
                 {isEvaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-black" /> : <Play className="w-3.5 h-3.5 fill-black" />}
-                SUBMIT SOLUTION
+                <span>SUBMIT</span>
+                <kbd className="hidden lg:inline text-[9px] bg-black/20 text-black px-1.5 py-0.5 font-normal">
+                  Ctrl+Shift+Enter
+                </kbd>
               </button>
             </div>
           </div>
 
-          {/* Test Evaluation Results Panel */}
-          {evalResult && (
-            <div className="h-44 bg-[#080808] border-t border-white/10 flex flex-col shrink-0">
-              <div className="h-9 bg-[#121212] flex items-center px-4 shrink-0 gap-2 border-b border-white/10">
-                <Sparkles className="w-3.5 h-3.5 text-[#00FF00]" />
-                <span className="text-[11px] font-black text-zinc-300 uppercase tracking-widest font-mono">
-                  GEMINI EVALUATION LOGS
-                </span>
-                {evalResult.allPassed ? (
-                   <span className="ml-auto text-[10px] font-black font-mono bg-green-500/20 text-[#00FF00] px-2 py-0.5 border border-green-500/30 uppercase">
-                     ALL TESTS PASSED
-                   </span>
-                ) : (
-                   <span className="ml-auto text-[10px] font-black font-mono bg-red-500/20 text-red-400 px-2 py-0.5 border border-red-500/30 uppercase">
-                     TESTS FAILED
-                   </span>
-                )}
+          {/* Interactive Test Runner & Console Drawer */}
+          {isConsoleExpanded && (
+            <div className="h-64 sm:h-72 bg-[#080808] border-t border-white/10 flex flex-col shrink-0">
+              {/* Drawer Header & Tabs */}
+              <div className="h-9 bg-[#111111] flex items-center justify-between px-3 shrink-0 border-b border-white/10 select-none">
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <button
+                    onClick={() => setActiveConsoleTab('cases')}
+                    className={clsx(
+                      "px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer",
+                      activeConsoleTab === 'cases' 
+                        ? "bg-[#080808] text-[#00FF00] border-t-2 border-[#00FF00]" 
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>TEST CASES</span>
+                    {runResults && (
+                      <span className={clsx(
+                        "ml-1 text-[9px] px-1.5 py-0.2 border font-mono font-black",
+                        runResults.allPassed 
+                          ? "bg-emerald-500/20 text-[#00FF00] border-emerald-500/30" 
+                          : "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                      )}>
+                        {runResults.passedCount}/{runResults.totalCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setActiveConsoleTab('terminal')}
+                    className={clsx(
+                      "px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer",
+                      activeConsoleTab === 'terminal' 
+                        ? "bg-[#080808] text-[#00FF00] border-t-2 border-[#00FF00]" 
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <Terminal className="w-3.5 h-3.5" />
+                    <span>RAW OUTPUT / LOGS</span>
+                    {runResults?.results.some(r => r.stderr || !r.passed) && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    )}
+                  </button>
+
+                  {evalResult && (
+                    <button
+                      onClick={() => setActiveConsoleTab('submission')}
+                      className={clsx(
+                        "px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer",
+                        activeConsoleTab === 'submission' 
+                          ? "bg-[#080808] text-[#00FF00] border-t-2 border-[#00FF00]" 
+                          : "text-zinc-400 hover:text-white"
+                      )}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-[#00FF00]" />
+                      <span>REFEREE LOGS</span>
+                      <span className={clsx(
+                        "ml-1 text-[9px] px-1.5 py-0.2 border font-mono font-black",
+                        evalResult.allPassed 
+                          ? "bg-emerald-500/20 text-[#00FF00] border-emerald-500/30" 
+                          : "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                      )}>
+                        {evalResult.allPassed ? 'PASSED' : 'FAILED'}
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400">
+                  <span className="hidden sm:inline-flex items-center gap-1 bg-black/60 border border-white/10 px-2 py-0.5 text-zinc-300">
+                    <Cpu className="w-3 h-3 text-[#00FF00]" />
+                    {runResults?.executionEngine || 'SANDBOX: JUDGE0 CE'}
+                  </span>
+                  <button
+                    onClick={() => setIsConsoleExpanded(false)}
+                    className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                    title="Collapse Console"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                <p className="text-xs font-mono text-zinc-300 mb-3">{evalResult.feedback}</p>
-                <div className="space-y-2">
-                  {evalResult.testResults?.map((test, i) => (
-                    <div key={i} className="bg-black border border-white/10 p-2 text-xs font-mono">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        {test.passed ? <Check className="w-3.5 h-3.5 text-[#00FF00]" /> : <X className="w-3.5 h-3.5 text-red-500" />}
-                        <span className="font-bold text-white uppercase text-[11px]">Test Case {i + 1}</span>
-                        <span className={clsx("ml-auto font-black text-[10px]", test.passed ? "text-[#00FF00]" : "text-red-500")}>
-                          {test.passed ? 'PASS' : 'WRONG OUTPUT'}
-                        </span>
+
+              {/* Drawer Tab Content */}
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
+                {activeConsoleTab === 'cases' && (
+                  <div className="flex flex-col h-full">
+                    {/* Test Case Subtabs */}
+                    <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-white/10">
+                      <div className="flex items-center gap-1.5 overflow-x-auto">
+                        {(room?.problem?.examples || []).map((_, idx) => {
+                          const caseResult = runResults?.results[idx];
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => setSelectedCaseIdx(idx)}
+                              className={clsx(
+                                "px-3 py-1 text-xs font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer border",
+                                selectedCaseIdx === idx
+                                  ? "bg-zinc-800 text-white border-white/30"
+                                  : "bg-black/60 text-zinc-400 border-white/10 hover:text-zinc-200 hover:bg-zinc-900"
+                              )}
+                            >
+                              <span>Case {idx + 1}</span>
+                              {caseResult ? (
+                                caseResult.passed ? (
+                                  <Check className="w-3 h-3 text-[#00FF00]" />
+                                ) : (
+                                  <X className="w-3 h-3 text-rose-400" />
+                                )
+                              ) : (
+                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>
+                              )}
+                            </button>
+                          );
+                        })}
+
+                        {/* Custom Case Tab */}
+                        <button
+                          onClick={() => setSelectedCaseIdx(-1)}
+                          className={clsx(
+                            "px-3 py-1 text-xs font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer border",
+                            selectedCaseIdx === -1
+                              ? "bg-zinc-800 text-white border-white/30"
+                              : "bg-black/60 text-zinc-400 border-white/10 hover:text-zinc-200 hover:bg-zinc-900"
+                          )}
+                        >
+                          <Plus className="w-3 h-3 text-[#00FF00]" />
+                          <span>Custom Case</span>
+                          {customInput.trim() && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#00FF00]"></span>
+                          )}
+                        </button>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-[10px] text-zinc-400">
-                        <div><span className="text-zinc-600">INPUT:</span> {test.input}</div>
-                        <div><span className="text-zinc-600">EXPECTED:</span> {test.expected}</div>
-                        <div><span className="text-zinc-600">ACTUAL:</span> {test.actual}</div>
+
+                      {/* Active Case Telemetry */}
+                      {selectedCaseIdx >= 0 && runResults?.results[selectedCaseIdx] && (
+                        <div className="hidden sm:flex items-center gap-3 text-[11px] font-mono">
+                          <span className={clsx(
+                            "px-2 py-0.5 border font-bold uppercase",
+                            runResults.results[selectedCaseIdx].passed
+                              ? "bg-emerald-500/10 text-[#00FF00] border-emerald-500/30"
+                              : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                          )}>
+                            {runResults.results[selectedCaseIdx].status}
+                          </span>
+                          {runResults.results[selectedCaseIdx].time && (
+                            <span className="text-zinc-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-zinc-500" />
+                              {runResults.results[selectedCaseIdx].time}
+                            </span>
+                          )}
+                          {runResults.results[selectedCaseIdx].memory && (
+                            <span className="text-zinc-400 flex items-center gap-1">
+                              <Cpu className="w-3 h-3 text-zinc-500" />
+                              {runResults.results[selectedCaseIdx].memory} MB
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Case Details */}
+                    {selectedCaseIdx === -1 ? (
+                      /* Custom Test Case Input Mode */
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                            <span>CUSTOM STDIN / INPUT</span>
+                            <span className="text-zinc-600 text-[9px]">e.g. nums = [2,7,11,15], target = 9</span>
+                          </label>
+                          <textarea
+                            value={customInput}
+                            onChange={(e) => setCustomInput(e.target.value)}
+                            placeholder="Enter custom input to execute against..."
+                            rows={3}
+                            className="w-full bg-black border border-white/10 p-2.5 text-zinc-200 text-xs font-mono focus:border-[#00FF00] focus:outline-none resize-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                            <span>EXPECTED OUTPUT (OPTIONAL)</span>
+                            <span className="text-zinc-600 text-[9px]">Used for correctness check</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={customExpected}
+                            onChange={(e) => setCustomExpected(e.target.value)}
+                            placeholder="Optional expected output to compare against..."
+                            className="w-full bg-black border border-white/10 p-2.5 text-zinc-200 text-xs font-mono focus:border-[#00FF00] focus:outline-none"
+                          />
+
+                          {runResults?.results.find(r => r.id === 'custom') && (
+                            <div className="mt-2 p-2 bg-black border border-white/10">
+                              <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">
+                                CUSTOM EXECUTION ACTUAL OUTPUT:
+                              </div>
+                              <div className="text-xs text-[#00FF00]">
+                                {runResults.results.find(r => r.id === 'custom')?.actual}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      /* Standard Example Case View */
+                      (() => {
+                        const example = room?.problem?.examples[selectedCaseIdx];
+                        const result = runResults?.results[selectedCaseIdx];
+
+                        return (
+                          <div className="space-y-3 font-mono text-xs">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3">
+                              {/* Input */}
+                              <div className="bg-black border border-white/10 p-2.5">
+                                <div className="text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1">
+                                  INPUT
+                                </div>
+                                <div className="text-zinc-200 font-mono text-xs break-all whitespace-pre-wrap max-h-20 overflow-y-auto">
+                                  {example?.input || '-'}
+                                </div>
+                              </div>
+
+                              {/* Expected Output */}
+                              <div className="bg-black border border-white/10 p-2.5">
+                                <div className="text-[10px] font-black text-zinc-500 uppercase tracking-wider mb-1">
+                                  EXPECTED OUTPUT
+                                </div>
+                                <div className="text-zinc-200 font-mono text-xs break-all whitespace-pre-wrap max-h-20 overflow-y-auto">
+                                  {example?.output || '-'}
+                                </div>
+                              </div>
+
+                              {/* Actual Output */}
+                              <div className={clsx(
+                                "bg-black border p-2.5 transition-colors",
+                                result 
+                                  ? result.passed 
+                                    ? "border-emerald-500/40 bg-emerald-950/10" 
+                                    : "border-rose-500/40 bg-rose-950/10" 
+                                  : "border-white/10"
+                              )}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">
+                                    ACTUAL OUTPUT
+                                  </span>
+                                  {result && (
+                                    <span className={clsx(
+                                      "text-[9px] font-black font-mono uppercase px-1.5 py-0.2 border",
+                                      result.passed 
+                                        ? "bg-emerald-500/20 text-[#00FF00] border-emerald-500/40" 
+                                        : "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                                    )}>
+                                      {result.status}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className={clsx(
+                                  "font-mono text-xs break-all whitespace-pre-wrap max-h-20 overflow-y-auto",
+                                  result 
+                                    ? result.passed 
+                                      ? "text-[#00FF00]" 
+                                      : "text-rose-400 font-bold" 
+                                    : "text-zinc-500 italic"
+                                )}>
+                                  {result ? result.actual : "Click 'Run Code' or press [Ctrl+Enter] to run against this case."}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Stdout / Stderr Diagnostic logs */}
+                            {result && (result.stdout || result.stderr || result.compileOutput) && (
+                              <div className="bg-[#050505] border border-white/10 p-2.5 space-y-1 text-[11px]">
+                                {result.stdout && (
+                                  <div>
+                                    <div className="text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-0.5">
+                                      STANDARD OUTPUT (PRINT LOGS)
+                                    </div>
+                                    <pre className="text-zinc-300 font-mono text-[11px] whitespace-pre-wrap max-h-16 overflow-y-auto">
+                                      {result.stdout}
+                                    </pre>
+                                  </div>
+                                )}
+                                {(result.stderr || result.compileOutput) && (
+                                  <div className="pt-1 border-t border-white/5">
+                                    <div className="text-[9px] font-black text-rose-400 uppercase tracking-wider mb-0.5">
+                                      STANDARD ERROR / DIAGNOSTICS
+                                    </div>
+                                    <pre className="text-rose-400 font-mono text-[11px] whitespace-pre-wrap max-h-16 overflow-y-auto">
+                                      {result.stderr || result.compileOutput}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                )}
+
+                {activeConsoleTab === 'terminal' && (
+                  <div className="font-mono text-xs space-y-2 h-full flex flex-col">
+                    <div className="flex items-center justify-between text-[11px] pb-2 border-b border-white/10 text-zinc-400">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#00FF00]">arena@external-sandbox:~$</span>
+                        <span>run --lang={language}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            if (!runResults) return;
+                            const text = runResults.results.map((r, i) => 
+                              `Case #${i + 1} (${r.status}):\nInput: ${r.input}\nExpected: ${r.expected}\nActual: ${r.actual}\n${r.stdout ? 'Stdout:\n' + r.stdout : ''}${r.stderr ? 'Stderr:\n' + r.stderr : ''}`
+                            ).join('\n\n');
+                            navigator.clipboard.writeText(text);
+                            setCopiedConsole(true);
+                            setTimeout(() => setCopiedConsole(false), 2000);
+                          }}
+                          className="px-2 py-0.5 bg-black hover:bg-zinc-800 border border-white/10 text-[10px] text-zinc-300 flex items-center gap-1 cursor-pointer"
+                        >
+                          {copiedConsole ? <Check className="w-3 h-3 text-[#00FF00]" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedConsole ? 'COPIED' : 'COPY'}</span>
+                        </button>
+                        <button
+                          onClick={() => setRunResults(null)}
+                          className="px-2 py-0.5 bg-black hover:bg-zinc-800 border border-white/10 text-[10px] text-zinc-300 cursor-pointer"
+                        >
+                          CLEAR
+                        </button>
                       </div>
                     </div>
-                  ))}
-                </div>
+
+                    <div className="flex-1 bg-black border border-white/10 p-3 overflow-y-auto text-[11px] space-y-2">
+                      <div className="text-zinc-500">
+                        [AlgoArena Code Execution Service // Engine: {runResults?.executionEngine || 'Judge0 CE Sandbox'}]
+                      </div>
+                      {runResults ? (
+                        runResults.results.map((res, i) => (
+                          <div key={i} className="space-y-1 pb-2 border-b border-white/5 last:border-0">
+                            <div className="flex items-center gap-2 font-bold">
+                              <span className={res.passed ? "text-[#00FF00]" : "text-rose-400"}>
+                                [{res.passed ? 'PASS' : 'FAIL'}] Case {i + 1}
+                              </span>
+                              <span className="text-zinc-500 text-[10px]">
+                                {res.status} ({res.time || '0ms'})
+                              </span>
+                            </div>
+                            <div className="text-zinc-400 text-[10px] pl-3">
+                              in: {res.input}
+                            </div>
+                            <div className="text-zinc-400 text-[10px] pl-3">
+                              exp: {res.expected}
+                            </div>
+                            <div className={clsx("text-[10px] pl-3", res.passed ? "text-[#00FF00]" : "text-rose-400")}>
+                              out: {res.actual}
+                            </div>
+                            {res.stdout && (
+                              <div className="text-zinc-400 text-[10px] pl-3 whitespace-pre-wrap">
+                                stdout: {res.stdout.trim()}
+                              </div>
+                            )}
+                            {res.stderr && (
+                              <div className="text-rose-400 text-[10px] pl-3 whitespace-pre-wrap">
+                                stderr: {res.stderr.trim()}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-zinc-600 italic">
+                          No active execution output yet. Click 'Run Code' or press [Ctrl+Enter] to execute your solution.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeConsoleTab === 'submission' && evalResult && (
+                  <div className="space-y-3 font-mono text-xs">
+                    <p className="text-zinc-300">{evalResult.feedback}</p>
+                    <div className="space-y-2">
+                      {evalResult.testResults?.map((test, i) => (
+                        <div key={i} className="bg-black border border-white/10 p-2 text-xs font-mono">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            {test.passed ? <Check className="w-3.5 h-3.5 text-[#00FF00]" /> : <X className="w-3.5 h-3.5 text-red-500" />}
+                            <span className="font-bold text-white uppercase text-[11px]">Test Case {i + 1}</span>
+                            <span className={clsx("ml-auto font-black text-[10px]", test.passed ? "text-[#00FF00]" : "text-red-500")}>
+                              {test.passed ? 'PASS' : 'WRONG OUTPUT'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-[10px] text-zinc-400">
+                            <div><span className="text-zinc-600">INPUT:</span> {test.input}</div>
+                            <div><span className="text-zinc-600">EXPECTED:</span> {test.expected}</div>
+                            <div><span className="text-zinc-600">ACTUAL:</span> {test.actual}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -898,25 +1661,53 @@ export function Arena() {
               <Activity className="w-3.5 h-3.5 text-[#00FF00]" />
             </h3>
             <div className="space-y-2 font-mono text-xs">
+              {(room?.problem?.examples || []).map((_, i) => {
+                const caseRes = runResults?.results[i];
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className={clsx(
+                      "w-2 h-2 rounded-full",
+                      caseRes 
+                        ? caseRes.passed ? "bg-[#00FF00]" : "bg-rose-500"
+                        : "bg-[#00FF00]"
+                    )}></div>
+                    <span className="text-zinc-400">Case 0{i + 1}: [Sample]</span>
+                    <span className={clsx(
+                      "ml-auto font-bold uppercase text-[10px]",
+                      caseRes 
+                        ? caseRes.passed ? "text-[#00FF00]" : "text-rose-400"
+                        : "text-[#00FF00]"
+                    )}>
+                      {caseRes ? (caseRes.passed ? `PASSED (${caseRes.time || '10ms'})` : 'FAILED') : 'READY'}
+                    </span>
+                  </div>
+                );
+              })}
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#00FF00]"></div>
-                <span className="text-zinc-400">Case 01: [Primary Input]</span>
-                <span className="ml-auto text-[#00FF00] font-bold">READY</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#00FF00]"></div>
-                <span className="text-zinc-400">Case 02: [Boundary Edge]</span>
-                <span className="ml-auto text-[#00FF00] font-bold">READY</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-zinc-700"></div>
+                <div className={clsx(
+                  "w-2 h-2 rounded-full",
+                  evalResult ? (evalResult.allPassed ? "bg-[#00FF00]" : "bg-zinc-700") : "bg-zinc-700"
+                )}></div>
                 <span className="text-zinc-500">Case 03: Hidden Matrix</span>
-                <span className="ml-auto text-zinc-600 font-bold uppercase">HIDDEN</span>
+                <span className={clsx(
+                  "ml-auto font-bold uppercase text-[10px]",
+                  evalResult ? (evalResult.allPassed ? "text-[#00FF00]" : "text-zinc-500") : "text-zinc-600"
+                )}>
+                  {evalResult ? (evalResult.allPassed ? 'VERIFIED' : 'FAILED') : 'HIDDEN'}
+                </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-zinc-700"></div>
+                <div className={clsx(
+                  "w-2 h-2 rounded-full",
+                  evalResult ? (evalResult.allPassed ? "bg-[#00FF00]" : "bg-zinc-700") : "bg-zinc-700"
+                )}></div>
                 <span className="text-zinc-500">Case 04: Large Array</span>
-                <span className="ml-auto text-zinc-600 font-bold uppercase">HIDDEN</span>
+                <span className={clsx(
+                  "ml-auto font-bold uppercase text-[10px]",
+                  evalResult ? (evalResult.allPassed ? "text-[#00FF00]" : "text-zinc-500") : "text-zinc-600"
+                )}>
+                  {evalResult ? (evalResult.allPassed ? 'VERIFIED' : 'FAILED') : 'HIDDEN'}
+                </span>
               </div>
             </div>
           </div>

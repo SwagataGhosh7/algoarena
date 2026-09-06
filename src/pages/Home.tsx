@@ -23,6 +23,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GlobalActivity } from '../components/GlobalActivity';
 import { Leaderboard } from '../components/Leaderboard';
+import { ConnectionStatus } from '../components/ConnectionStatus';
 
 export function Home() {
   const navigate = useNavigate();
@@ -67,9 +68,7 @@ export function Home() {
               ALGOARENA // LADDER
             </span>
           </div>
-          <span className="hidden sm:inline-block bg-[#00FF00]/10 text-[#00FF00] text-[10px] px-2 py-0.5 border border-[#00FF00]/30 font-mono uppercase font-bold">
-            Status: OPERATIONAL
-          </span>
+          <ConnectionStatus />
         </div>
 
         <div className="flex items-center gap-3">
@@ -447,7 +446,7 @@ export function Home() {
   );
 }
 
-function ActionCard({ icon, badge, title, description, actionText, onClick, primary = false, accent = false, disabled = false }: any) {
+function ActionCard({ icon, badge, title, description, actionText, onClick, primary = false, accent = false, disabled = false, children }: any) {
   return (
     <div 
       onClick={disabled ? undefined : onClick}
@@ -474,6 +473,7 @@ function ActionCard({ icon, badge, title, description, actionText, onClick, prim
         </div>
         <h3 className="text-xl font-black uppercase italic tracking-tight text-white mb-2">{title}</h3>
         <p className="text-xs text-zinc-400 font-mono leading-relaxed">{description}</p>
+        {children}
       </div>
 
       <div className="mt-6 pt-4 border-t border-white/5">

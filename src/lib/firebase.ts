@@ -14,13 +14,13 @@ import {
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBARh-xubFf6gphvzkEdN0NafbBWWFATVA",
-  authDomain: "algoarena-56cf3.firebaseapp.com",
-  projectId: "algoarena-56cf3",
-  storageBucket: "algoarena-56cf3.firebasestorage.app",
-  messagingSenderId: "947638160148",
-  appId: "1:947638160148:web:416c13f5c5b16715f8d001",
-  measurementId: "G-997HESYB6M"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBARh-xubFf6gphvzkEdN0NafbBWWFATVA",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "algoarena-56cf3.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "algoarena-56cf3",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "algoarena-56cf3.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "947638160148",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:947638160148:web:416c13f5c5b16715f8d001",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-997HESYB6M"
 };
 
 // Initialize Firebase

@@ -24,8 +24,21 @@ export function GlobalActivity() {
 
   const fetchGlobalTelemetry = async () => {
     try {
-      const res = await fetch(apiUrl('/api/global-activity'));
-      if (res.ok) {
+      const targetUrl = apiUrl('/api/global-activity');
+      let res: Response | null = null;
+      try {
+        res = await fetch(targetUrl);
+      } catch (fetchErr) {
+        if (targetUrl.startsWith('http')) {
+          try {
+            res = await fetch('/api/global-activity');
+          } catch {
+            // ignore fallback error
+          }
+        }
+        if (!res) throw fetchErr;
+      }
+      if (res && res.ok) {
         const data = await res.json();
         setActiveBattles(data.activeBattles ?? 0);
         setOnlineUsers(data.onlineUsers ?? 1);
@@ -34,7 +47,7 @@ export function GlobalActivity() {
         setRecentEvents(data.recentEvents || []);
       }
     } catch (err) {
-      console.error('Telemetry fetch error:', err);
+      console.warn('Telemetry update unavailable:', err);
     } finally {
       setIsLoading(false);
     }

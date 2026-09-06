@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Terminal, ArrowLeft, User, Trophy } from 'lucide-react';
 import { Leaderboard } from '../components/Leaderboard';
+import { ConnectionStatus } from '../components/ConnectionStatus';
 import { useStore } from '../store';
 
 export function LeaderboardPage() {
@@ -30,7 +31,8 @@ export function LeaderboardPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <ConnectionStatus />
           <button 
             onClick={() => navigate(`/profile/${currentUser.name.replace(' ', '')}`)}
             className="flex items-center gap-2 bg-[#080808] border border-[#00FF00]/30 px-3 py-1.5 cursor-pointer hover:border-[#00FF00] hover:bg-[#00FF00]/10 transition-all group"

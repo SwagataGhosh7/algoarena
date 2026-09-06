@@ -78,7 +78,7 @@ export function Profile() {
         }
       }
     } catch (err) {
-      console.error('Failed to load user profile:', err);
+      console.warn('Failed to load user profile:', err);
     } finally {
       setLoading(false);
     }

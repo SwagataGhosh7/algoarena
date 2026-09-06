@@ -20,6 +20,10 @@ export interface User {
   ready: boolean;
   progress: number; // percentage or number of tests passed
   isAi?: boolean;
+  isBot?: boolean;
+  submittedCode?: string;
+  submittedLanguage?: string;
+  submittedReview?: EvaluationResult['review'];
 }
 
 export interface RoomState {
@@ -31,6 +35,7 @@ export interface RoomState {
   startTime?: number;
   mode?: 'duel' | 'practice';
   topic?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
 }
 
 export interface ChatMessage {
@@ -38,6 +43,32 @@ export interface ChatMessage {
   system?: boolean;
   isHint?: boolean;
   text: string;
+}
+
+export interface RunTestCaseResult {
+  id: number | string;
+  input: string;
+  expected: string;
+  actual: string;
+  passed: boolean;
+  stdout: string;
+  stderr: string;
+  compileOutput?: string;
+  time?: string;
+  memory?: number;
+  status: string;
+  exitCode?: number;
+}
+
+export interface RunCodeResponse {
+  success: boolean;
+  allPassed: boolean;
+  passedCount: number;
+  totalCount: number;
+  executionEngine: string;
+  totalTimeMs?: number;
+  results: RunTestCaseResult[];
+  error?: string;
 }
 
 export interface EvaluationResult {
@@ -63,6 +94,37 @@ export interface CodeReviewData {
     issue: string;
     expected: string;
   }[];
+}
+
+export interface SolutionLanguageOption {
+  id: string;
+  name: string;
+  extension: string;
+  monacoLang: string;
+  code: string;
+  timeComplexity?: string;
+  spaceComplexity?: string;
+  explanation?: string;
+}
+
+export interface LineByLineAnalysisItem {
+  lineNumber: number;
+  code: string;
+  status: 'ok' | 'warning' | 'error' | 'fix_recommended';
+  issue?: string;
+  recommendedFix?: string;
+  explanation?: string;
+}
+
+export interface LineByLineAnalysisResult {
+  hasErrors: boolean;
+  overallVerdict: string;
+  summary: string;
+  keyFixes: string[];
+  lineAnalyses: LineByLineAnalysisItem[];
+  fullFixedCode?: string;
+  timeComplexity?: string;
+  spaceComplexity?: string;
 }
 
 export interface CompetencyTopic {
