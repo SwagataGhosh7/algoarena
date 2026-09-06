@@ -1351,7 +1351,7 @@ interface CompetencyTopic {
   subject: string;
   score: number;
   fullMark: number;
-  tier: string;
+  tier?: string;
   solvedCount: number;
   winRate: number;
 }
@@ -1422,14 +1422,7 @@ const globalMatchFeed: MatchEvent[] = [
 ];
 
 function calculateRank(elo: number): string {
-  if (elo >= 2400) return 'GRANDMASTER';
-  if (elo >= 2200) return 'MASTER';
-  if (elo >= 2000) return 'DIAMOND I';
-  if (elo >= 1800) return 'DIAMOND II';
-  if (elo >= 1600) return 'GOLD I';
-  if (elo >= 1400) return 'GOLD II';
-  if (elo >= 1200) return 'SILVER I';
-  return 'BRONZE I';
+  return `${elo} ELO`;
 }
 
 function parseDurationSeconds(duration: string): number {
@@ -1440,12 +1433,12 @@ function parseDurationSeconds(duration: string): number {
 
 function getInitialCompetencies(): CompetencyTopic[] {
   return [
-    { subject: 'Arrays', score: 110, fullMark: 150, tier: 'Master', solvedCount: 14, winRate: 75 },
-    { subject: 'Graphs', score: 90, fullMark: 150, tier: 'Diamond', solvedCount: 9, winRate: 65 },
-    { subject: 'Dynamic Prog.', score: 85, fullMark: 150, tier: 'Diamond', solvedCount: 8, winRate: 60 },
-    { subject: 'Trees', score: 98, fullMark: 150, tier: 'Diamond', solvedCount: 11, winRate: 70 },
-    { subject: 'Bit Manip.', score: 75, fullMark: 150, tier: 'Platinum', solvedCount: 6, winRate: 55 },
-    { subject: 'Math & Number', score: 80, fullMark: 150, tier: 'Platinum', solvedCount: 7, winRate: 58 },
+    { subject: 'Arrays', score: 110, fullMark: 150, solvedCount: 14, winRate: 75 },
+    { subject: 'Graphs', score: 90, fullMark: 150, solvedCount: 9, winRate: 65 },
+    { subject: 'Dynamic Prog.', score: 85, fullMark: 150, solvedCount: 8, winRate: 60 },
+    { subject: 'Trees', score: 98, fullMark: 150, solvedCount: 11, winRate: 70 },
+    { subject: 'Bit Manip.', score: 75, fullMark: 150, solvedCount: 6, winRate: 55 },
+    { subject: 'Math & Number', score: 80, fullMark: 150, solvedCount: 7, winRate: 58 },
   ];
 }
 
@@ -1464,7 +1457,7 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
       {
         id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
         opponent: 'AlgoArena Bot [Mentor]',
-        opponentRank: 'Grandmaster II',
+        opponentRank: '2450 ELO',
         outcome: 'Victory',
         problem: 'Dynamic Island Count & Matrix Traversal',
         difficulty: 'Medium',
@@ -1479,7 +1472,7 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
       {
         id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
         opponent: 'CyberRonin',
-        opponentRank: 'Diamond I',
+        opponentRank: '2100 ELO',
         outcome: 'Victory',
         problem: 'Topological Task Graph Scheduling',
         difficulty: 'Hard',
@@ -1494,7 +1487,7 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
       {
         id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
         opponent: 'QuantumCoder',
-        opponentRank: 'Master II',
+        opponentRank: '1950 ELO',
         outcome: 'Defeat',
         problem: 'Invert Binary Subtree Matrix',
         difficulty: 'Medium',
@@ -1509,7 +1502,7 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
       {
         id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
         opponent: 'ByteHacker',
-        opponentRank: 'Platinum I',
+        opponentRank: '1420 ELO',
         outcome: 'Victory',
         problem: 'Two Sum Target Complement Hash',
         difficulty: 'Easy',
@@ -1530,7 +1523,7 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
       incomingFriendRequests: [],
       outgoingFriendRequests: [],
       elo: 1266,
-      rankTitle: 'SILVER I',
+      rankTitle: '1266 ELO',
       peakElo: 1284,
       wins: 3,
       losses: 1,
@@ -1547,7 +1540,7 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
       matches: starterMatches,
       aiAssessment: {
         tacticalCritique: 'Operator demonstrates high structural accuracy in graph and matrix traversal, with fast TypeScript and Python implementations.',
-        focusRecommendation: 'Calibrate tree inversion recursion and bitmask optimizations to break past Diamond tier.',
+        focusRecommendation: 'Calibrate tree inversion recursion and bitmask optimizations to push above 1800 ELO.',
         lastAudited: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       },
     };
@@ -1872,17 +1865,15 @@ async function startServer() {
         ? allEntries.find(e => e.username.toLowerCase() === currentUserNameLower)
         : undefined;
 
-      // Filter by competitive tier if requested
+      // Filter by rating bracket if requested
       let filtered = [...allEntries];
       if (tier && tier.toLowerCase() !== 'all') {
         const t = tier.toLowerCase();
         filtered = filtered.filter(e => {
-          const title = e.rankTitle.toLowerCase();
-          if (t === 'grandmaster') return title.includes('grandmaster');
-          if (t === 'master') return title.includes('master') && !title.includes('grandmaster');
-          if (t === 'diamond') return title.includes('diamond');
-          if (t === 'gold') return title.includes('gold');
-          if (t === 'silver') return title.includes('silver');
+          if (t === 'grandmaster' || t === 'elite') return e.elo >= 2000;
+          if (t === 'master' || t === 'advanced') return e.elo >= 1600 && e.elo < 2000;
+          if (t === 'diamond' || t === 'intermediate') return e.elo >= 1200 && e.elo < 1600;
+          if (t === 'gold' || t === 'silver' || t === 'novice') return e.elo < 1200;
           return true;
         });
       }
@@ -1914,12 +1905,11 @@ async function startServer() {
           seasonEndsIn: '14D 06H 18M',
           currentUserStats,
           lastUpdated: new Date().toLocaleTimeString('en-US', { hour12: false }),
-          tierThresholds: {
-            grandmaster: 2400,
-            master: 2200,
-            diamond: 1800,
-            gold: 1400,
-            silver: 1200,
+          ratingBrackets: {
+            elite: 2000,
+            advanced: 1600,
+            intermediate: 1200,
+            novice: 0,
           },
         },
       });
@@ -2062,7 +2052,7 @@ async function startServer() {
 
       const prompt = `Analyze this competitive programmer's performance and return an objective, cyberpunk-themed tactical dossier critique.
 Username: ${profile.username}
-Current ELO: ${profile.elo} (${profile.rankTitle})
+Current ELO: ${profile.elo} ELO
 Wins: ${profile.wins} | Losses: ${profile.losses}
 Test Accuracy: ${profile.testAccuracy}%
 Recent Matches: ${JSON.stringify(profile.matches.slice(0, 5))}
@@ -2072,7 +2062,7 @@ Generate:
 1. tacticalCritique: A 2-sentence sharp assessment of their coding strengths and weaknesses.
 2. focusRecommendation: A specific DSA algorithmic topic they should train next to level up.
 3. newHonors: 3-4 badass tactical badges/honors (e.g. "GRAPH SPECIALIST", "ZERO-ALLOCATION", "DYNAMIC ARCHITECT").
-4. updatedCompetencies: Adjusted score (0-150) and tier ("Master"|"Diamond"|"Platinum"|"Gold") for Arrays, Graphs, Dynamic Prog., Trees, Bit Manip., Math & Number based on their performance.`;
+4. updatedCompetencies: Adjusted score (0-150) for Arrays, Graphs, Dynamic Prog., Trees, Bit Manip., Math & Number based on their performance.`;
 
       let audit: any = {};
       try {
@@ -2095,9 +2085,8 @@ Generate:
                   properties: {
                     subject: { type: Type.STRING },
                     score: { type: Type.NUMBER },
-                    tier: { type: Type.STRING },
                   },
-                  required: ['subject', 'score', 'tier'],
+                  required: ['subject', 'score'],
                 },
               },
             },
@@ -2131,7 +2120,6 @@ Generate:
             return {
               ...comp,
               score: Math.min(150, Math.max(30, Math.round(match.score))),
-              tier: match.tier || comp.tier,
             };
           }
           return comp;

@@ -437,7 +437,7 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
                           {match.opponent}
                         </span>
                         <span className="text-[8px] text-zinc-500 uppercase block">
-                          {match.opponentRank || 'Gold II'}
+                          {match.opponentRank || '1450 ELO'}
                         </span>
                       </div>
                     </div>
@@ -619,7 +619,7 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
                               {match.opponent}
                             </span>
                             <span className="text-[9px] text-zinc-500 uppercase">
-                              {match.opponentRank || 'Gold II'} &middot; {match.id}
+                              {match.opponentRank || '1450 ELO'} &middot; {match.id}
                             </span>
                           </div>
                         </div>
@@ -776,10 +776,10 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
               </span>
             </div>
             <div>
-              <span className="text-zinc-500 uppercase font-bold block">OPPONENT DIVISION</span>
+              <span className="text-zinc-500 uppercase font-bold block">OPPONENT RATING</span>
               <span className="text-zinc-200 font-bold flex items-center gap-1.5 mt-0.5">
                 <Trophy className="w-3 h-3 text-amber-400" />
-                {selectedMatch.opponentRank || 'Gold II Division'}
+                {selectedMatch.opponentRank || '1450 ELO'}
               </span>
             </div>
           </div>

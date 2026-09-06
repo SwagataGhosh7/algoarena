@@ -15,19 +15,19 @@ export interface CompetencyTopic {
   subject: string;
   score: number;
   fullMark: number;
-  tier: string;
+  tier?: string;
   solvedCount: number;
   winRate: number;
   benchmark?: number;
 }
 
 const DEFAULT_TOPICS: CompetencyTopic[] = [
-  { subject: 'Arrays', score: 128, fullMark: 150, tier: 'Master', solvedCount: 42, winRate: 78, benchmark: 95 },
-  { subject: 'Graphs', score: 94, fullMark: 150, tier: 'Diamond', solvedCount: 26, winRate: 65, benchmark: 85 },
-  { subject: 'Dynamic Prog.', score: 112, fullMark: 150, tier: 'Master', solvedCount: 35, winRate: 71, benchmark: 90 },
-  { subject: 'Trees', score: 104, fullMark: 150, tier: 'Diamond', solvedCount: 30, winRate: 69, benchmark: 88 },
-  { subject: 'Bit Manip.', score: 82, fullMark: 150, tier: 'Platinum', solvedCount: 18, winRate: 58, benchmark: 75 },
-  { subject: 'Math & Logic', score: 76, fullMark: 150, tier: 'Platinum', solvedCount: 15, winRate: 54, benchmark: 80 },
+  { subject: 'Arrays', score: 128, fullMark: 150, tier: '85%', solvedCount: 42, winRate: 78, benchmark: 95 },
+  { subject: 'Graphs', score: 94, fullMark: 150, tier: '63%', solvedCount: 26, winRate: 65, benchmark: 85 },
+  { subject: 'Dynamic Prog.', score: 112, fullMark: 150, tier: '75%', solvedCount: 35, winRate: 71, benchmark: 90 },
+  { subject: 'Trees', score: 104, fullMark: 150, tier: '69%', solvedCount: 30, winRate: 69, benchmark: 88 },
+  { subject: 'Bit Manip.', score: 82, fullMark: 150, tier: '55%', solvedCount: 18, winRate: 58, benchmark: 75 },
+  { subject: 'Math & Logic', score: 76, fullMark: 150, tier: '51%', solvedCount: 15, winRate: 54, benchmark: 80 },
 ];
 
 // Topic specific advice mapping
@@ -118,7 +118,7 @@ export function CompetencyRadar({ username = 'OPERATOR', data = DEFAULT_TOPICS }
                 ? 'bg-[#F27D26]/15 border-[#F27D26]/50 text-[#F27D26]'
                 : 'bg-black border-white/10 text-zinc-500 hover:text-zinc-300'
             }`}
-            title="Toggle Global Diamond Tier Benchmark"
+            title="Toggle Global 1800+ ELO Benchmark"
           >
             <Layers className="w-3 h-3" />
             <span>{showBenchmark ? 'BENCHMARK: ON' : 'BENCHMARK: OFF'}</span>
@@ -171,8 +171,8 @@ export function CompetencyRadar({ username = 'OPERATOR', data = DEFAULT_TOPICS }
                     <div className="bg-black/95 border border-[#00FF00]/50 p-3 shadow-[0_0_20px_rgba(0,255,0,0.25)] font-mono text-xs">
                       <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-1.5 mb-2">
                         <span className="font-black text-white uppercase text-xs">{pData.subject}</span>
-                        <span className="text-[#F27D26] text-[10px] font-bold px-1.5 py-0.5 border border-[#F27D26]/30 bg-[#F27D26]/10">
-                          {pData.tier}
+                        <span className="text-[#00FF00] text-[10px] font-bold px-1.5 py-0.5 border border-[#00FF00]/30 bg-[#00FF00]/10 font-mono">
+                          {Math.round((pData.userScore / pData.fullMark) * 100)}% MASTERY
                         </span>
                       </div>
                       <div className="space-y-1">
@@ -201,7 +201,7 @@ export function CompetencyRadar({ username = 'OPERATOR', data = DEFAULT_TOPICS }
             {/* Global Benchmark Series */}
             {showBenchmark && (
               <Radar
-                name="Global Diamond Benchmark"
+                name="Global 1800+ ELO Benchmark"
                 dataKey="benchmark"
                 stroke="#F27D26"
                 strokeWidth={1.5}
@@ -264,9 +264,9 @@ export function CompetencyRadar({ username = 'OPERATOR', data = DEFAULT_TOPICS }
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className="truncate font-bold uppercase text-[11px]">{topic.subject}</span>
                   <span className={`text-[9px] px-1 py-0.2 border ${
-                    isSelected ? 'border-[#00FF00] text-[#00FF00]' : 'border-white/10 text-zinc-500'
+                    isSelected ? 'border-[#00FF00] text-[#00FF00]' : 'border-white/10 text-zinc-400'
                   }`}>
-                    {topic.tier}
+                    {Math.round((topic.score / topic.fullMark) * 100)}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[9px] text-zinc-500">
@@ -295,8 +295,8 @@ export function CompetencyRadar({ username = 'OPERATOR', data = DEFAULT_TOPICS }
               <span className="font-black text-white uppercase text-xs">
                 {activeTopic.subject} SPECIALIZATION
               </span>
-              <span className="text-[10px] bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30 px-1.5 py-0.5 font-bold">
-                {activeTopic.tier.toUpperCase()} TIER
+              <span className="text-[10px] bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30 px-1.5 py-0.5 font-bold font-mono">
+                {Math.round((activeTopic.score / activeTopic.fullMark) * 100)}% MASTERY
               </span>
             </div>
             <div className="flex items-center gap-4 text-[10px] text-zinc-400">

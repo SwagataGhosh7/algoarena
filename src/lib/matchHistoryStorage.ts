@@ -59,7 +59,7 @@ export function getSampleBenchmarkMatches(operatorName = 'Operator'): MatchRecor
     {
       id: 'MT-8942',
       opponent: 'AlgoArena Bot [Mentor]',
-      opponentRank: 'Grandmaster II',
+      opponentRank: '2400 ELO',
       outcome: 'Victory',
       problem: 'Dynamic Island Count & Matrix Traversal',
       difficulty: 'Medium',
@@ -153,7 +153,7 @@ function numIslands(grid: string[][]): number {
     {
       id: 'MT-7215',
       opponent: 'CyberRonin',
-      opponentRank: 'Diamond I',
+      opponentRank: '1950 ELO',
       outcome: 'Victory',
       problem: 'Topological Task Graph Scheduling',
       difficulty: 'Hard',
@@ -237,7 +237,7 @@ def canFinish(numCourses: int, prerequisites: list[list[int]]) -> bool:
     {
       id: 'MT-6104',
       opponent: 'QuantumCoder',
-      opponentRank: 'Master II',
+      opponentRank: '2240 ELO',
       outcome: 'Defeat',
       problem: 'Invert Binary Subtree Matrix',
       difficulty: 'Medium',
@@ -290,7 +290,7 @@ public:
     {
       id: 'MT-5531',
       opponent: 'ByteHacker',
-      opponentRank: 'Platinum I',
+      opponentRank: '1680 ELO',
       outcome: 'Victory',
       problem: 'Two Sum Target Complement Hash',
       difficulty: 'Easy',

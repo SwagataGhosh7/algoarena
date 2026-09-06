@@ -131,7 +131,8 @@ export interface CompetencyTopic {
   subject: string;
   score: number;
   fullMark: number;
-  tier: string;
+  tier?: string;
+  level?: string;
   solvedCount: number;
   winRate: number;
 }
@@ -260,12 +261,11 @@ export interface LeaderboardResponse {
     seasonEndsIn: string;
     currentUserStats?: LeaderboardUser;
     lastUpdated: string;
-    tierThresholds: {
-      grandmaster: number;
-      master: number;
-      diamond: number;
-      gold: number;
-      silver: number;
+    ratingBrackets?: {
+      elite: number;
+      advanced: number;
+      intermediate: number;
+      novice: number;
     };
   };
 }

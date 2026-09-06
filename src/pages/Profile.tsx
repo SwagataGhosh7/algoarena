@@ -113,7 +113,7 @@ export function Profile() {
         incomingFriendRequests: [],
         outgoingFriendRequests: [],
         elo: 1200 + (wins * 25) - (losses * 18),
-        rankTitle: wins >= 5 ? 'GOLD II' : 'SILVER I',
+        rankTitle: `${1200 + (wins * 25) - (losses * 18)} ELO`,
         peakElo: 1200 + (wins * 25),
         wins,
         losses,
@@ -238,7 +238,7 @@ export function Profile() {
     const benchmarkMatch: MatchRecord = {
       id: 'MT-BENCHMARK',
       opponent: 'AlgoArena Bot [Mentor]',
-      opponentRank: 'Grandmaster II',
+      opponentRank: '2400 ELO',
       outcome: 'Victory',
       problem: 'Dynamic Island Count & Matrix Traversal',
       difficulty: 'Medium',
@@ -408,7 +408,7 @@ export function Profile() {
               </div>
 
               <div className="flex flex-wrap justify-center sm:justify-start gap-2">
-                <Badge icon={<Award className="w-3.5 h-3.5 text-[#F27D26]" />} text={`${profile.rankTitle} (${profile.elo} ELO)`} />
+                <Badge icon={<Award className="w-3.5 h-3.5 text-[#F27D26]" />} text={`RATING: ${profile.elo} ELO`} />
                 <Badge icon={<Flame className="w-3.5 h-3.5 text-[#00FF00]" />} text={`W/L: ${profile.wins} - ${profile.losses} (${winRate}%)`} />
                 <Badge icon={<Terminal className="w-3.5 h-3.5 text-zinc-400" />} text={`Streak: ${profile.streak} Wins`} />
                 <Badge icon={<Shield className="w-3.5 h-3.5 text-purple-400" />} text={`Accuracy: ${profile.testAccuracy}%`} />
@@ -546,8 +546,8 @@ export function Profile() {
                   <Cpu className="w-3.5 h-3.5 text-[#00FF00]" />
                   COMBAT TELEMETRY // REAL STATS
                 </h2>
-                <span className="text-[10px] text-[#F27D26] font-bold uppercase">
-                  RANK: {profile.rankTitle}
+                <span className="text-[10px] text-[#00FF00] font-bold uppercase">
+                  RATING: {profile.elo} ELO
                 </span>
               </div>
 

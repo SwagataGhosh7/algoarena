@@ -444,7 +444,7 @@ export function Arena() {
         recordCompletedMatch(userName, {
           id: `MT-${Date.now().toString().slice(-6)}`,
           opponent: oppName,
-          opponentRank: 'Gold II',
+          opponentRank: `${currentOpponents[0]?.elo || 1450} ELO`,
           outcome: isWin ? 'Victory' : 'Defeat',
           problem: probTitle,
           difficulty: probDifficulty,

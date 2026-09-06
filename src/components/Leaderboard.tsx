@@ -37,7 +37,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
 
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
   const [meta, setMeta] = useState<LeaderboardResponse['meta'] | null>(null);
-  const [selectedTier, setSelectedTier] = useState<string>('all');
+  const [selectedBracket, setSelectedBracket] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -50,7 +50,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
     try {
       const params = new URLSearchParams();
       params.set('scope', scope);
-      if (selectedTier !== 'all') params.set('tier', selectedTier);
+      if (selectedBracket !== 'all') params.set('tier', selectedBracket);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
       if (accountProfile?.username || currentUser?.name) params.set('currentUser', accountProfile?.username || currentUser.name);
 
@@ -89,7 +89,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [selectedTier, searchQuery, scope, accountProfile?.username, currentUser?.name]);
+  }, [selectedBracket, searchQuery, scope, accountProfile?.username, currentUser?.name]);
 
   // Initial fetch and dependency trigger
   useEffect(() => {
@@ -145,40 +145,32 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
     );
   };
 
-  // Helper for Tier badge colors
-  const getTierBadge = (tierTitle: string) => {
-    const t = tierTitle.toUpperCase();
-    if (t.includes('GRANDMASTER')) {
+  // Helper for ELO rating badge
+  const getEloBadge = (elo: number) => {
+    if (elo >= 2000) {
       return (
         <span className="bg-[#00FF00]/15 text-[#00FF00] border border-[#00FF00]/50 px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider shadow-[0_0_8px_rgba(0,255,0,0.2)]">
-          {tierTitle}
+          {elo} ELO
         </span>
       );
     }
-    if (t.includes('MASTER')) {
+    if (elo >= 1600) {
       return (
         <span className="bg-purple-500/15 text-purple-400 border border-purple-500/40 px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider shadow-[0_0_8px_rgba(168,85,247,0.2)]">
-          {tierTitle}
+          {elo} ELO
         </span>
       );
     }
-    if (t.includes('DIAMOND')) {
+    if (elo >= 1200) {
       return (
         <span className="bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider shadow-[0_0_8px_rgba(6,182,212,0.2)]">
-          {tierTitle}
-        </span>
-      );
-    }
-    if (t.includes('GOLD')) {
-      return (
-        <span className="bg-[#F27D26]/15 text-[#F27D26] border border-[#F27D26]/40 px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider">
-          {tierTitle}
+          {elo} ELO
         </span>
       );
     }
     return (
       <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider">
-        {tierTitle}
+        {elo} ELO
       </span>
     );
   };
@@ -267,11 +259,11 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       )}
 
       {/* Top 3 Podium Cards */}
-      {selectedTier === 'all' && !searchQuery.trim() && topThree.length === 3 && (
+      {selectedBracket === 'all' && !searchQuery.trim() && topThree.length === 3 && (
         <div className="mb-10">
           <div className="flex items-center gap-2 font-mono text-xs uppercase font-bold text-zinc-400 mb-4 tracking-wider">
             <Crown className="w-4 h-4 text-amber-400" />
-            <span>GRANDMASTER PODIUM // APEX DUELISTS</span>
+            <span>TOP 3 PODIUM // APEX DUELISTS</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -317,7 +309,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
               <div className="flex items-center gap-2">
                 <span className="text-white font-black text-sm uppercase tracking-wider">{currentUserEntry.username}</span>
                 <span className="bg-[#00FF00] text-black font-black text-[9px] px-1.5 py-0.2 uppercase">YOU</span>
-                {getTierBadge(currentUserEntry.rankTitle)}
+                {getEloBadge(currentUserEntry.elo)}
               </div>
               <p className="text-[11px] text-zinc-400 mt-0.5">
                 Rating: <strong className="text-[#00FF00] font-bold">{currentUserEntry.elo} ELO</strong> &bull; Win Rate: <strong className="text-white">{currentUserEntry.winRate}%</strong> &bull; Streak: <strong className="text-[#F27D26]">{currentUserEntry.streak}W</strong>
@@ -343,30 +335,30 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
 
       {/* Filter and Search Controls */}
       <div className="bg-[#0c0c0c] border border-white/10 p-4 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 font-mono">
-        {/* Tier Filter Tabs */}
+        {/* Rating Bracket Filter Tabs */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-zinc-500 text-xs mr-2 flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" />
-            <span>TIER:</span>
+            <span>RATING:</span>
           </span>
           {[
-            { id: 'all', label: 'ALL TIERS' },
-            { id: 'grandmaster', label: 'GRANDMASTER' },
-            { id: 'master', label: 'MASTER' },
-            { id: 'diamond', label: 'DIAMOND' },
-            { id: 'gold', label: 'GOLD' },
-          ].map(tier => (
+            { id: 'all', label: 'ALL RATINGS' },
+            { id: 'elite', label: '2000+ ELO' },
+            { id: 'advanced', label: '1600 - 1999' },
+            { id: 'intermediate', label: '1200 - 1599' },
+            { id: 'novice', label: '< 1200' },
+          ].map(bracket => (
             <button
-              key={tier.id}
-              onClick={() => setSelectedTier(tier.id)}
+              key={bracket.id}
+              onClick={() => setSelectedBracket(bracket.id)}
               className={clsx(
                 "px-2.5 py-1 text-xs font-bold uppercase transition-all cursor-pointer border",
-                selectedTier === tier.id
+                selectedBracket === bracket.id
                   ? "bg-[#00FF00] text-black border-[#00FF00] shadow-[0_0_10px_rgba(0,255,0,0.3)]"
                   : "bg-black text-zinc-400 border-white/10 hover:border-white/30 hover:text-white"
               )}
             >
-              {tier.label}
+              {bracket.label}
             </button>
           ))}
         </div>
@@ -399,7 +391,6 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
             <tr className="border-b border-white/10 bg-[#101010] text-zinc-500 text-[10px] uppercase tracking-wider font-bold">
               <th className="py-3 px-4 w-16 text-center">RANK</th>
               <th className="py-3 px-4">OPERATOR</th>
-              <th className="py-3 px-4">DIVISION</th>
               <th className="py-3 px-4 text-right">RATING (ELO)</th>
               <th className="py-3 px-4 text-center">RECORD</th>
               <th className="py-3 px-4 text-right">WIN RATE</th>
@@ -412,7 +403,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
           <tbody className="divide-y divide-white/5">
             {isLoading ? (
               <tr>
-                <td colSpan={10} className="py-16 text-center text-zinc-500">
+                <td colSpan={9} className="py-16 text-center text-zinc-500">
                   <div className="flex flex-col items-center justify-center gap-3">
                     <RefreshCw className="w-6 h-6 animate-spin text-[#00FF00]" />
                     <span className="text-xs uppercase font-bold tracking-widest text-zinc-400">
@@ -423,9 +414,9 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
               </tr>
             ) : leaderboard.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-14 text-center text-zinc-500">
+                <td colSpan={9} className="py-14 text-center text-zinc-500">
                   <p className="text-sm font-bold uppercase text-zinc-400">NO OPERATORS MATCH CRITERIA</p>
-                  <p className="text-xs text-zinc-600 mt-1">Try resetting the tier filter or searching another handle.</p>
+                  <p className="text-xs text-zinc-600 mt-1">Try resetting the rating filter or searching another handle.</p>
                 </td>
               </tr>
             ) : (
@@ -492,11 +483,6 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
                           </div>
                         </div>
                       </div>
-                    </td>
-
-                    {/* Division */}
-                    <td className="py-3 px-4">
-                      {getTierBadge(user.rankTitle)}
                     </td>
 
                     {/* ELO Rating & Trend */}
@@ -573,7 +559,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       {/* Ladder Rules & Meta Footer */}
       <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-zinc-500 font-mono text-[11px] border-t border-white/10 pt-4">
         <div className="flex items-center gap-4">
-          <span>TIER CUTOFFS: GRANDMASTER &ge; 2400 &bull; MASTER &ge; 2200 &bull; DIAMOND &ge; 1800</span>
+          <span>RATING BRACKETS: ELITE &ge; 2000 ELO &bull; ADVANCED &ge; 1600 ELO &bull; INTERMEDIATE &ge; 1200 ELO</span>
         </div>
         <div className="flex items-center gap-2">
           <span>SEASON ENDS: <strong className="text-white">{meta?.seasonEndsIn || '14 DAYS'}</strong></span>
@@ -583,7 +569,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
   );
 }
 
-// Podium Sub-Component for Top 3 Grandmasters
+// Podium Sub-Component for Top 3 Duelists
 interface PodiumCardProps {
   user: LeaderboardUser;
   rank: number;
@@ -627,8 +613,8 @@ function PodiumCard({ user, rank, isLeader = false, badgeColor, medalIcon, onNav
           </div>
         </div>
 
-        <span className="bg-[#00FF00]/15 text-[#00FF00] border border-[#00FF00]/40 text-[9px] px-2 py-0.5 font-bold uppercase">
-          {user.rankTitle}
+        <span className="bg-[#00FF00]/15 text-[#00FF00] border border-[#00FF00]/40 text-[9px] px-2 py-0.5 font-bold uppercase font-mono">
+          {user.elo} ELO
         </span>
       </div>
 
