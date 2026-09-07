@@ -60,11 +60,6 @@ export function FloatingLobbyChat() {
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;
 
-  // Lobby chat should ONLY appear on the home page (not in match arena, profile, leaderboard, etc.)
-  if (location.pathname !== '/') {
-    return null;
-  }
-
   const currentUsername = accountProfile?.username || currentUser?.name || 'Player';
   const currentElo = 1200;
   const currentAvatar = accountProfile?.photoURL;
@@ -227,6 +222,11 @@ export function FloatingLobbyChat() {
     setInspectedUser(null);
     inputRef.current?.focus();
   };
+
+  // Lobby chat should ONLY appear on the home page (not in match arena, profile, leaderboard, etc.)
+  if (location.pathname !== '/') {
+    return null;
+  }
 
   return (
     <>
