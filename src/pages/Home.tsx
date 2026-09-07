@@ -26,7 +26,6 @@ import { Leaderboard } from '../components/Leaderboard';
 import { LobbyOperatorsList } from '../components/LobbyOperatorsList';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SoundToggle } from '../components/SoundToggle';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
 
 export function Home() {
@@ -79,7 +78,6 @@ export function Home() {
         <div className="flex items-center gap-4">
           <AlgoArenaLogo size="sm" showTagline={false} />
           <ConnectionStatus />
-          <ThemeToggle />
           <SoundToggle />
         </div>
 

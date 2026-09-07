@@ -17,7 +17,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
 import { ConnectionStatus, useConnectionStatus } from '../components/ConnectionStatus';
-import { EditorThemeSelector } from '../components/EditorThemeSelector';
 import { NeonPaletteSelector } from '../components/NeonPaletteSelector';
 import { useNeonTheme } from '../lib/neonThemes';
 import { getStoredTheme, saveStoredTheme, registerMonacoThemes } from '../lib/editorThemes';
@@ -1997,17 +1996,51 @@ export function Arena() {
                 <span>MAP</span>
               </button>
 
-              {/* Theme Selector */}
-              <EditorThemeSelector 
-                currentTheme={editorTheme} 
-                onSelectTheme={handleThemeChange} 
+              {/* Horizontal 1-Click Language Switcher (Left to Right) */}
+              <div className="flex items-center bg-black/70 border border-white/10 rounded p-0.5 gap-0.5">
+                {[
+                  { id: 'c', label: 'C', color: '#9ca3af' },
+                  { id: 'cpp', label: 'C++', color: '#00599c' },
+                  { id: 'java', label: 'Java', color: '#ea2d2e' },
+                  { id: 'python', label: 'Python', color: '#387eb8' },
+                  { id: 'javascript', label: 'JS', color: '#f7df1e' },
+                  { id: 'typescript', label: 'TS', color: '#3178c6' },
+                ].map(langItem => {
+                  const isActive = language === langItem.id;
+                  return (
+                    <button
+                      key={langItem.id}
+                      type="button"
+                      onClick={() => handleLanguageChange(langItem.id)}
+                      disabled={room?.status === 'finished'}
+                      className={clsx(
+                        "px-2 py-1 text-[11px] font-mono font-bold rounded transition-all flex items-center gap-1.5 cursor-pointer",
+                        isActive
+                          ? "bg-[#00FF00]/20 text-[#00FF00] border border-[#00FF00]/50 shadow-[0_0_8px_rgba(0,255,0,0.25)]"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
+                      )}
+                      title={`Switch language to ${langItem.label}`}
+                    >
+                      <span 
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: langItem.color }}
+                      />
+                      <span>{langItem.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Language Dropdown with Full Details */}
+              <LanguageDropdown
+                currentLanguage={language}
+                onLanguageChange={handleLanguageChange}
+                onResetTemplate={handleResetTemplate}
+                codeBuffers={codeBuffers}
+                autoInjectBoilerplate={autoInjectBoilerplate}
+                onToggleAutoInject={handleToggleAutoBoilerplate}
+                disabled={room?.status === 'finished'}
               />
-
-              {/* Combat Persona Neon Palette Selector */}
-              <NeonPaletteSelector compact />
-
-              {/* Sound FX Toggle */}
-              <SoundToggle compact />
 
               <div className="h-4 w-px bg-white/10 hidden sm:block" />
 
@@ -2022,16 +2055,8 @@ export function Arena() {
                 disabled={room?.status === 'finished'}
               />
 
-              {/* Language Dropdown with Instant Syntax Highlighting */}
-              <LanguageDropdown
-                currentLanguage={language}
-                onLanguageChange={handleLanguageChange}
-                onResetTemplate={handleResetTemplate}
-                codeBuffers={codeBuffers}
-                autoInjectBoilerplate={autoInjectBoilerplate}
-                onToggleAutoInject={handleToggleAutoBoilerplate}
-                disabled={room?.status === 'finished'}
-              />
+              {/* Sound FX Toggle */}
+              <SoundToggle compact />
             </div>
           </div>
           
