@@ -17,7 +17,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
 import { ConnectionStatus, useConnectionStatus } from '../components/ConnectionStatus';
-import { NeonPaletteSelector } from '../components/NeonPaletteSelector';
 import { useNeonTheme } from '../lib/neonThemes';
 import { getStoredTheme, saveStoredTheme, registerMonacoThemes } from '../lib/editorThemes';
 import { SoundToggle } from '../components/SoundToggle';
@@ -55,7 +54,6 @@ import { AIHelper } from '../components/AIHelper';
 import { AIHelperItem } from '../types';
 import { OpponentProfileModal } from '../components/OpponentProfileModal';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
-import { ThemeToggle } from '../components/ThemeToggle';
 
 const STARTER_TEMPLATES: Record<string, string> = {
   javascript: getLanguageBoilerplate('javascript'),
@@ -1366,14 +1364,7 @@ export function Arena() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3 sm:gap-4">
-          <ThemeToggle />
-
-          {/* Persona Combat HUD Neon Palette Selector */}
-          <div className="hidden lg:block">
-            <NeonPaletteSelector />
-          </div>
-
+        <div className="flex items-center gap-2.5 sm:gap-3">
           {/* Social Share Duel Button */}
           <SocialShareButton 
             roomId={roomId || ''} 
@@ -1607,7 +1598,7 @@ export function Arena() {
       )}
 
       {/* Main Content Layout (3-Column Grid) */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-[330px_1fr_300px] overflow-hidden">
+      <main className="flex-1 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_300px] overflow-hidden">
         
         {/* Left Column: Problem Panel */}
         <aside className="border-r border-white/10 bg-[#080808] flex flex-col overflow-hidden">
@@ -1907,10 +1898,10 @@ export function Arena() {
         </aside>
 
         {/* Center Column: Monaco Code Editor */}
-        <section className="flex flex-col bg-[#050505] relative overflow-hidden border-r border-white/10">
+        <section className="flex flex-col bg-[#050505] relative overflow-hidden border-r border-white/10 min-w-0">
           {/* Editor Header */}
-          <div className="h-11 bg-[#121212] flex items-center justify-between px-3 sm:px-4 border-b border-white/5 shrink-0">
-            <div className="flex items-center gap-2.5 text-xs font-mono">
+          <div className="h-11 bg-[#121212] flex items-center justify-between px-3 sm:px-4 border-b border-white/5 shrink-0 gap-2 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-2.5 text-xs font-mono shrink-0">
               <span className="text-[#00FF00] font-bold flex items-center gap-1.5">
                 <span 
                   className="w-2 h-2 rounded-full inline-block shrink-0 shadow-xs"
@@ -1935,19 +1926,6 @@ export function Arena() {
                   language === 'rust' ? 'rs' : 'js'
                 }
               </span>
-              <span className="text-zinc-600 hidden sm:inline">|</span>
-              <span className="text-zinc-400 text-[11px] hidden md:inline">
-                LANGUAGE: <span className="text-white uppercase font-bold">{
-                  language === 'c' ? 'C (C17 / GCC)' :
-                  language === 'java' ? 'Java 21' :
-                  language === 'cpp' ? 'C++ 20' :
-                  language === 'python' ? 'Python 3.11' :
-                  language === 'javascript' ? 'JavaScript' :
-                  language === 'typescript' ? 'TypeScript' :
-                  language === 'go' ? 'Go 1.22' :
-                  language === 'rust' ? 'Rust 2021' : language
-                }</span>
-              </span>
 
               {/* Local Storage Auto-Save Status Badge */}
               <AutoSaveStatusBadge
@@ -1958,44 +1936,7 @@ export function Arena() {
               />
             </div>
             
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              {/* Font Zoom Controls */}
-              <div className="hidden lg:flex items-center bg-black/60 border border-white/10 px-1 py-0.5 text-[10px] text-zinc-400">
-                <button
-                  type="button"
-                  onClick={() => setEditorFontSize(f => Math.max(10, f - 1))}
-                  className="px-1 hover:text-white transition-colors"
-                  title="Decrease Editor Font Size"
-                >
-                  <ZoomOut className="w-3 h-3" />
-                </button>
-                <span className="px-1 font-bold text-zinc-300">{editorFontSize}px</span>
-                <button
-                  type="button"
-                  onClick={() => setEditorFontSize(f => Math.min(22, f + 1))}
-                  className="px-1 hover:text-white transition-colors"
-                  title="Increase Editor Font Size"
-                >
-                  <ZoomIn className="w-3 h-3" />
-                </button>
-              </div>
-
-              {/* Minimap Toggle */}
-              <button
-                type="button"
-                onClick={() => setShowMinimap(!showMinimap)}
-                className={clsx(
-                  "hidden xl:flex items-center gap-1 px-2 py-1 border text-[10px] font-bold uppercase transition-colors cursor-pointer",
-                  showMinimap 
-                    ? "bg-[#00FF00]/15 text-[#00FF00] border-[#00FF00]/40" 
-                    : "bg-black/60 text-zinc-400 border-white/10 hover:text-white"
-                )}
-                title="Toggle Monaco Code Minimap"
-              >
-                <Layers className="w-3 h-3" />
-                <span>MAP</span>
-              </button>
-
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
               {/* Horizontal 1-Click Language Switcher (Left to Right) */}
               <div className="flex items-center bg-black/70 border border-white/10 rounded p-0.5 gap-0.5">
                 {[
@@ -2031,7 +1972,7 @@ export function Arena() {
                 })}
               </div>
 
-              {/* Language Dropdown with Full Details */}
+              {/* Compact More Languages Dropdown */}
               <LanguageDropdown
                 currentLanguage={language}
                 onLanguageChange={handleLanguageChange}
@@ -2040,6 +1981,7 @@ export function Arena() {
                 autoInjectBoilerplate={autoInjectBoilerplate}
                 onToggleAutoInject={handleToggleAutoBoilerplate}
                 disabled={room?.status === 'finished'}
+                compact={true}
               />
 
               <div className="h-4 w-px bg-white/10 hidden sm:block" />
@@ -2054,6 +1996,43 @@ export function Arena() {
                 onInjectBoilerplate={handleInjectBoilerplate}
                 disabled={room?.status === 'finished'}
               />
+
+              {/* Font Zoom Controls */}
+              <div className="hidden xl:flex items-center bg-black/60 border border-white/10 px-1 py-0.5 text-[10px] text-zinc-400">
+                <button
+                  type="button"
+                  onClick={() => setEditorFontSize(f => Math.max(10, f - 1))}
+                  className="px-1 hover:text-white transition-colors"
+                  title="Decrease Editor Font Size"
+                >
+                  <ZoomOut className="w-3 h-3" />
+                </button>
+                <span className="px-1 font-bold text-zinc-300">{editorFontSize}px</span>
+                <button
+                  type="button"
+                  onClick={() => setEditorFontSize(f => Math.min(22, f + 1))}
+                  className="px-1 hover:text-white transition-colors"
+                  title="Increase Editor Font Size"
+                >
+                  <ZoomIn className="w-3 h-3" />
+                </button>
+              </div>
+
+              {/* Minimap Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowMinimap(!showMinimap)}
+                className={clsx(
+                  "hidden xl:flex items-center gap-1 px-2 py-1 border text-[10px] font-bold uppercase transition-colors cursor-pointer",
+                  showMinimap 
+                    ? "bg-[#00FF00]/15 text-[#00FF00] border-[#00FF00]/40" 
+                    : "bg-black/60 text-zinc-400 border-white/10 hover:text-white"
+                )}
+                title="Toggle Monaco Code Minimap"
+              >
+                <Layers className="w-3 h-3" />
+                <span>MAP</span>
+              </button>
 
               {/* Sound FX Toggle */}
               <SoundToggle compact />

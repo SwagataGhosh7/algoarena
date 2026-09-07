@@ -3385,19 +3385,6 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
         broadcastOnlineUsers();
       }
 
-    socket.on('leave_room', ({ roomId }: { roomId?: string } = {}) => {
-      if (roomId) {
-        socket.leave(roomId);
-      }
-      const existing = activeSocketUsers.get(socket.id);
-      if (existing) {
-        existing.roomId = undefined;
-        existing.status = 'online';
-        existing.lastSeen = Date.now();
-        broadcastOnlineUsers();
-      }
-    });
-
       const cleanDiff = (difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase()))
         ? String(difficulty).toLowerCase()
         : 'medium';
@@ -3416,20 +3403,46 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
       }
 
       const room = rooms.get(roomId);
-      if (difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase()) && room.status === 'waiting') {
-        room.difficulty = String(difficulty).toLowerCase();
-      }
-      if (topic && room.status === 'waiting') {
-        room.topic = topic;
-      }
-      if (mode && room.status === 'waiting') {
-        room.mode = mode;
-      }
+      if (room) {
+        if (difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase()) && room.status === 'waiting') {
+          room.difficulty = String(difficulty).toLowerCase();
+        }
+        if (topic && room.status === 'waiting') {
+          room.topic = topic;
+        }
+        if (mode && room.status === 'waiting') {
+          room.mode = mode;
+        }
 
-      room.users[socket.id] = { ...user, id: socket.id, ready: false, progress: 0 };
+        room.users[socket.id] = { ...user, id: socket.id, ready: false, progress: 0 };
 
-      io.to(roomId).emit('room_state_update', room);
-      socket.to(roomId).emit('chat_message', { system: true, text: `${user.name} entered arena grid.` });
+        io.to(roomId).emit('room_state_update', room);
+        socket.to(roomId).emit('chat_message', { system: true, text: `${user?.name || 'Duelist'} entered arena grid.` });
+      }
+    });
+
+    socket.on('leave_room', ({ roomId }: { roomId?: string } = {}) => {
+      const targetRoomId = roomId || activeSocketUsers.get(socket.id)?.roomId;
+      if (targetRoomId) {
+        socket.leave(targetRoomId);
+        const room = rooms.get(targetRoomId);
+        if (room && room.users[socket.id]) {
+          const leavingUser = room.users[socket.id];
+          delete room.users[socket.id];
+          io.to(targetRoomId).emit('room_state_update', room);
+          io.to(targetRoomId).emit('chat_message', { system: true, text: `${leavingUser.name} left the arena.` });
+          if (Object.keys(room.users).length === 0) {
+            rooms.delete(targetRoomId);
+          }
+        }
+      }
+      const existing = activeSocketUsers.get(socket.id);
+      if (existing) {
+        existing.roomId = undefined;
+        existing.status = 'online';
+        existing.lastSeen = Date.now();
+        broadcastOnlineUsers();
+      }
     });
 
     // Real-time In-Arena Live Chat between matched duelists
@@ -3820,23 +3833,6 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       io.to(roomId).emit('chat_message', { system: true, text: systemMsg });
 
       io.to(roomId).emit('room_state_update', room);
-    });
-
-    socket.on('send_chat', ({ roomId, text }) => {
-      const room = rooms.get(roomId);
-      if (!room || !room.users[socket.id]) return;
-      io.to(roomId).emit('chat_message', { user: room.users[socket.id].name, text });
-    });
-
-    socket.on('leave_room', ({ roomId }) => {
-      const room = rooms.get(roomId);
-      if (!room || !room.users[socket.id] || room.status === 'active') return;
-      const leavingUser = room.users[socket.id];
-      delete room.users[socket.id];
-      socket.leave(roomId);
-      io.to(roomId).emit('room_state_update', room);
-      io.to(roomId).emit('chat_message', { system: true, text: `${leavingUser.name} left the room.` });
-      if (Object.keys(room.users).length === 0) rooms.delete(roomId);
     });
 
     socket.on('match_won', ({ roomId, problemTitle, difficulty, language, duration, passedCount, totalTests, code, playback, review, hintsUsed, hintCostPenalty, baseScore, finalScore }) => {

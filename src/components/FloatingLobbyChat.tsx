@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   MessageSquare, X, ChevronDown, Send, Users, Volume2, VolumeX, 
   Swords, User, RefreshCw, Terminal, Sparkles, CornerDownLeft, ShieldAlert
@@ -43,6 +43,7 @@ function getAvatarColor(name: string): string {
 
 export function FloatingLobbyChat() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentUser, accountProfile } = useStore();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<LobbyChatMessage[]>([]);
@@ -58,6 +59,11 @@ export function FloatingLobbyChat() {
   const inputRef = useRef<HTMLInputElement>(null);
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;
+
+  // Lobby chat should ONLY appear on the home page (not in match arena, profile, leaderboard, etc.)
+  if (location.pathname !== '/') {
+    return null;
+  }
 
   const currentUsername = accountProfile?.username || currentUser?.name || 'Player';
   const currentElo = 1200;

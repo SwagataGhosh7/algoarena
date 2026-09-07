@@ -285,43 +285,60 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-controls={menuId}
-        className={`group flex items-center gap-2 px-2.5 py-1.5 rounded bg-[#121212] hover:bg-[#1a1a1a] border transition-all text-xs font-mono select-none ${
+        className={compact ? `group flex items-center gap-1 px-2 py-1 rounded bg-[#161616] hover:bg-[#202020] border transition-all text-[11px] font-mono font-bold select-none ${
+          isOpen
+            ? 'border-[#00FF00] text-[#00FF00] shadow-[0_0_8px_rgba(0,255,0,0.25)]'
+            : 'border-white/10 hover:border-white/25 text-zinc-300 hover:text-white'
+        } disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer` : `group flex items-center gap-2 px-2.5 py-1.5 rounded bg-[#121212] hover:bg-[#1a1a1a] border transition-all text-xs font-mono select-none ${
           isOpen
             ? 'border-[#00FF00] shadow-[0_0_12px_rgba(0,255,0,0.25)] text-white'
             : 'border-white/15 hover:border-white/30 text-zinc-200'
         } disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer`}
         title={`Switch Solution Programming Language (Active: ${activeLang.name} ${activeLang.version})`}
       >
-        {/* Language Glowing Swatch Dot */}
-        <span className="relative flex items-center justify-center shrink-0">
-          <span 
-            className="w-2.5 h-2.5 rounded-full"
-            style={{ 
-              backgroundColor: activeLang.accentColor,
-              boxShadow: `0 0 6px ${activeLang.accentColor}88` 
-            }}
-          />
-        </span>
+        {compact ? (
+          <>
+            <span className="text-zinc-400 group-hover:text-zinc-200 text-[10px] uppercase font-bold tracking-wider">MORE</span>
+            <ChevronDown 
+              className={`w-3 h-3 text-zinc-400 group-hover:text-white transition-transform duration-200 shrink-0 ${
+                isOpen ? 'rotate-180 text-[#00FF00]' : ''
+              }`} 
+            />
+          </>
+        ) : (
+          <>
+            {/* Language Glowing Swatch Dot */}
+            <span className="relative flex items-center justify-center shrink-0">
+              <span 
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ 
+                  backgroundColor: activeLang.accentColor,
+                  boxShadow: `0 0 6px ${activeLang.accentColor}88` 
+                }}
+              />
+            </span>
 
-        {/* Label and Active Language Name */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-zinc-400 uppercase tracking-widest hidden sm:inline">
-            LANGUAGE:
-          </span>
-          <span className="font-bold text-[#00FF00] tracking-wide">
-            {activeLang.name}
-          </span>
-          <span className="text-[10px] text-zinc-400 font-mono px-1 py-0.5 rounded bg-white/5 border border-white/10 hidden md:inline">
-            {activeLang.extension}
-          </span>
-        </div>
+            {/* Label and Active Language Name */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-zinc-400 uppercase tracking-widest hidden sm:inline">
+                LANGUAGE:
+              </span>
+              <span className="font-bold text-[#00FF00] tracking-wide">
+                {activeLang.name}
+              </span>
+              <span className="text-[10px] text-zinc-400 font-mono px-1 py-0.5 rounded bg-white/5 border border-white/10 hidden md:inline">
+                {activeLang.extension}
+              </span>
+            </div>
 
-        {/* Dropdown Chevron */}
-        <ChevronDown 
-          className={`w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-transform duration-200 shrink-0 ${
-            isOpen ? 'rotate-180 text-[#00FF00]' : ''
-          }`} 
-        />
+            {/* Dropdown Chevron */}
+            <ChevronDown 
+              className={`w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-transform duration-200 shrink-0 ${
+                isOpen ? 'rotate-180 text-[#00FF00]' : ''
+              }`} 
+            />
+          </>
+        )}
       </button>
 
       {/* Popover Dropdown Menu */}
