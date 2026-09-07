@@ -28,11 +28,101 @@ interface CodePlaybackProps {
   onClose?: () => void;
 }
 
-// Generate realistic line-by-line playback frames if raw recordings were not captured
-export function generatePlaybackFrames(match: MatchRecord): CodePlaybackData {
-  const codeSolution = match.playback?.finalCode || getDefaultCodeForProblem(match.problem, match.language);
+export interface GeneratePlaybackParams {
+  codeSolution: string;
+  language: string;
+  problemTitle: string;
+  duration?: string;
+  durationSec?: number;
+  outcome?: 'Victory' | 'Defeat';
+  difficulty?: string;
+  matchId?: string;
+  authorName?: string;
+  testsPassed?: number;
+  totalTests?: number;
+}
+
+export function parseDurationToSeconds(dur?: string): number {
+  if (!dur) return 240;
+  const mMatch = dur.match(/(\d+)\s*m/);
+  const sMatch = dur.match(/(\d+)\s*s/);
+  const m = mMatch ? parseInt(mMatch[1], 10) : 4;
+  const s = sMatch ? parseInt(sMatch[1], 10) : 0;
+  return m * 60 + s;
+}
+
+export function getDefaultCodeForProblem(problemName: string, lang: string): string {
+  if (lang.toLowerCase().includes('python')) {
+    return `class Solution:
+    def solve(self, data: list[int]) -> int:
+        # Step 1: Initialize dual pointers and accumulator
+        if not data:
+            return 0
+        
+        n = len(data)
+        left, right = 0, n - 1
+        max_seen = float('-inf')
+        current_sum = 0
+        
+        # Step 2: Traverse with linear complexity O(N)
+        for val in data:
+            current_sum = max(val, current_sum + val)
+            max_seen = max(max_seen, current_sum)
+            
+        # Step 3: Return optimal calculated metric
+        return max_seen`;
+  }
+
+  if (lang.toLowerCase().includes('c++') || lang.toLowerCase() === 'cpp') {
+    return `#include <vector>
+#include <algorithm>
+#include <climits>
+
+class Solution {
+public:
+    int solve(std::vector<int>& nums) {
+        if (nums.empty()) return 0;
+        
+        int currentMax = nums[0];
+        int globalMax = nums[0];
+        
+        for (size_t i = 1; i < nums.size(); ++i) {
+            currentMax = std::max(nums[i], currentMax + nums[i]);
+            globalMax = std::max(globalMax, currentMax);
+        }
+        
+        return globalMax;
+    }
+};`;
+  }
+
+  return `function solve(inputData: number[]): number {
+  // 1. Edge case handling & parameter bounds
+  if (!inputData || inputData.length === 0) {
+    return 0;
+  }
+
+  let runningMax = inputData[0];
+  let globalMax = inputData[0];
+
+  // 2. Linear scan with Kadane's optimal subproblem aggregation
+  for (let i = 1; i < inputData.length; i++) {
+    const current = inputData[i];
+    runningMax = Math.max(current, runningMax + current);
+    globalMax = Math.max(globalMax, runningMax);
+  }
+
+  // 3. Return verified maximum subarray score
+  return globalMax;
+}`;
+}
+
+export function generatePlaybackData(params: GeneratePlaybackParams): CodePlaybackData {
+  const codeSolution = params.codeSolution || getDefaultCodeForProblem(params.problemTitle, params.language);
   const lines = codeSolution.split('\n');
-  const durationSec = parseDurationToSeconds(match.duration);
+  const durationSec = params.durationSec || (params.duration ? parseDurationToSeconds(params.duration) : 240);
+  const totalTests = params.totalTests || 5;
+  const passedTests = params.testsPassed !== undefined ? params.testsPassed : (params.outcome === 'Victory' ? totalTests : Math.max(1, totalTests - 2));
 
   const frames: CodeSnapshotFrame[] = [];
   const milestones: CodePlaybackData['milestones'] = [];
@@ -45,7 +135,7 @@ export function generatePlaybackFrames(match: MatchRecord): CodePlaybackData {
     timestampMs: 0,
     timeDisplay: '00:00',
     title: 'Match Initialized',
-    description: 'Reading problem requirements and allocating state variables',
+    description: `${params.authorName ? `${params.authorName}: ` : ''}Allocated runtime state variables and reading problem invariants`,
     type: 'setup',
   });
 
@@ -89,7 +179,7 @@ export function generatePlaybackFrames(match: MatchRecord): CodePlaybackData {
       });
     } else if (i === Math.floor(totalFrames * 0.85)) {
       action = 'test_run';
-      milestoneDesc = 'Initial test suite execution: 3/5 passed';
+      milestoneDesc = `Mid-match execution: ${Math.max(1, Math.floor(passedTests * 0.6))}/${totalTests} passed`;
       milestones.push({
         timestampMs: timeSec * 1000,
         timeDisplay,
@@ -99,15 +189,23 @@ export function generatePlaybackFrames(match: MatchRecord): CodePlaybackData {
       });
     } else if (i === totalFrames - 1) {
       action = 'final';
-      milestoneDesc = 'All test suites evaluated: 5/5 PASSED';
+      milestoneDesc = params.outcome === 'Victory' 
+        ? `All test suites evaluated: ${totalTests}/${totalTests} PASSED` 
+        : `Final evaluation completed: ${passedTests}/${totalTests} PASSED`;
       milestones.push({
         timestampMs: timeSec * 1000,
         timeDisplay,
-        title: 'Flawless Solution Verified',
+        title: params.outcome === 'Victory' ? 'Flawless Solution Verified' : 'Submission Completed',
         description: milestoneDesc,
         type: 'complete',
       });
     }
+
+    const currentTestsPassed = progress > 0.85 
+      ? passedTests 
+      : progress > 0.6 
+        ? Math.max(1, Math.floor(passedTests * 0.6)) 
+        : Math.min(1, passedTests);
 
     frames.push({
       timestampMs: timeSec * 1000,
@@ -119,15 +217,15 @@ export function generatePlaybackFrames(match: MatchRecord): CodePlaybackData {
       cpm,
       action,
       milestoneDescription: milestoneDesc,
-      testsPassed: progress > 0.85 ? 5 : progress > 0.6 ? 3 : 1,
-      totalTests: 5,
+      testsPassed: currentTestsPassed,
+      totalTests,
     });
   }
 
   return {
-    matchId: match.id,
-    problemTitle: match.problem,
-    language: match.language || 'TypeScript',
+    matchId: params.matchId || 'match-current',
+    problemTitle: params.problemTitle,
+    language: params.language || 'TypeScript',
     durationSeconds: durationSec,
     initialCode: '// Solution buffer initialized',
     finalCode: codeSolution,
@@ -136,85 +234,34 @@ export function generatePlaybackFrames(match: MatchRecord): CodePlaybackData {
     peakWpm: 94,
     cyclomaticComplexity: 4,
     memoryEstimateKb: 18.4,
-    timeComplexityNotation: match.difficulty === 'Hard' ? 'O(N log N)' : 'O(N)',
-    efficiencyScore: match.outcome === 'Victory' ? 96 : 78,
+    timeComplexityNotation: params.difficulty === 'Hard' ? 'O(N log N)' : 'O(N)',
+    efficiencyScore: params.outcome === 'Victory' ? 96 : 78,
     frames,
     milestones,
   };
 }
 
-function parseDurationToSeconds(dur: string): number {
-  const mMatch = dur.match(/(\d+)\s*m/);
-  const sMatch = dur.match(/(\d+)\s*s/);
-  const m = mMatch ? parseInt(mMatch[1], 10) : 10;
-  const s = sMatch ? parseInt(sMatch[1], 10) : 0;
-  return m * 60 + s;
-}
-
-function getDefaultCodeForProblem(problemName: string, lang: string): string {
-  if (lang.toLowerCase().includes('python')) {
-    return `class Solution:
-    def solve(self, data: list[int]) -> int:
-        # Step 1: Initialize dual pointers and accumulator
-        if not data:
-            return 0
-        
-        n = len(data)
-        left, right = 0, n - 1
-        max_seen = float('-inf')
-        current_sum = 0
-        
-        # Step 2: Traverse with linear complexity O(N)
-        for val in data:
-            current_sum = max(val, current_sum + val)
-            max_seen = max(max_seen, current_sum)
-            
-        # Step 3: Return optimal calculated metric
-        return max_seen`;
+// Generate realistic line-by-line playback frames if raw recordings were not captured
+export function generatePlaybackFrames(match: MatchRecord): CodePlaybackData {
+  if (match.playback) {
+    return match.playback;
   }
+  const testsMatch = (match.testScore || '').match(/(\d+)\s*\/\s*(\d+)/);
+  const passedTests = testsMatch ? parseInt(testsMatch[1], 10) : (match.outcome === 'Victory' ? 5 : 2);
+  const totalTests = testsMatch ? parseInt(testsMatch[2], 10) : 5;
 
-  if (lang.toLowerCase().includes('c++')) {
-    return `#include <vector>
-#include <algorithm>
-#include <climits>
-
-class Solution {
-public:
-    int solve(std::vector<int>& nums) {
-        if (nums.empty()) return 0;
-        
-        int currentMax = nums[0];
-        int globalMax = nums[0];
-        
-        for (size_t i = 1; i < nums.size(); ++i) {
-            currentMax = std::max(nums[i], currentMax + nums[i]);
-            globalMax = std::max(globalMax, currentMax);
-        }
-        
-        return globalMax;
-    }
-};`;
-  }
-
-  return `function solve(inputData: number[]): number {
-  // 1. Edge case handling & parameter bounds
-  if (!inputData || inputData.length === 0) {
-    return 0;
-  }
-
-  let runningMax = inputData[0];
-  let globalMax = inputData[0];
-
-  // 2. Linear scan with Kadane's optimal subproblem aggregation
-  for (let i = 1; i < inputData.length; i++) {
-    const current = inputData[i];
-    runningMax = Math.max(current, runningMax + current);
-    globalMax = Math.max(globalMax, runningMax);
-  }
-
-  // 3. Return verified maximum subarray score
-  return globalMax;
-}`;
+  return generatePlaybackData({
+    codeSolution: match.playback?.finalCode || match.code || getDefaultCodeForProblem(match.problem, match.language),
+    language: match.language || 'TypeScript',
+    problemTitle: match.problem,
+    duration: match.duration,
+    outcome: match.outcome,
+    difficulty: match.difficulty,
+    matchId: match.id,
+    authorName: match.opponent,
+    testsPassed: passedTests,
+    totalTests,
+  });
 }
 
 export function CodePlayback({ match, onClose }: CodePlaybackProps) {

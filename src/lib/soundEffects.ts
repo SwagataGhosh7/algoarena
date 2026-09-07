@@ -304,11 +304,30 @@ class SoundEffectsManager {
   }
 
   /**
+   * High-urgency alert pulse for AFK / idle fair-play detection
+   */
+  public playAfkWarning(): void {
+    if (this.muted) return;
+    this.playSubtleTone(880, 0.14, 'sawtooth', 0.08, 0.0);
+    this.playSubtleTone(587.33, 0.16, 'square', 0.09, 0.12);
+    this.playSubtleTone(440, 0.22, 'sine', 0.10, 0.25);
+  }
+
+  /**
    * Subtle click for toggles, language switches, and buttons
    */
   public playClick(): void {
     if (this.muted) return;
     this.playSubtleTone(880, 0.05, 'sine', 0.03, 0.0);
+  }
+
+  /**
+   * Pleasant chime when an incoming challenge, hint dispatch, or invite is received
+   */
+  public playNotification(): void {
+    if (this.muted) return;
+    this.playSubtleTone(659.25, 0.12, 'sine', 0.06, 0.0);
+    this.playSubtleTone(880.00, 0.20, 'sine', 0.08, 0.08);
   }
 
   /**

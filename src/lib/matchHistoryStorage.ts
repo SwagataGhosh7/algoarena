@@ -418,6 +418,10 @@ export async function recordCompletedMatch(
           optimalSolution: record.optimalSolution,
           playback: record.playback,
           review: record.review,
+          hintsUsed: record.hintsUsed,
+          hintCostPenalty: record.hintCostPenalty,
+          baseScore: record.baseScore,
+          finalScore: record.finalScore,
         },
       }),
     });

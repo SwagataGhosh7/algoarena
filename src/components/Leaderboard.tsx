@@ -25,6 +25,7 @@ import { useStore } from '../store';
 import { LeaderboardUser, LeaderboardResponse } from '../types';
 import { apiUrl } from '../api';
 import { OnlineStatusIndicator } from './OnlineStatusIndicator';
+import { triggerDirectChallenge } from './DirectChallengeModal';
 
 interface LeaderboardProps {
   embedded?: boolean;
@@ -541,12 +542,28 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
                       </span>
                     </td>
 
-                    {/* Dossier Link */}
+                    {/* Actions: Challenge & Dossier Link */}
                     <td className="py-3 px-4 text-right">
-                      <span className="text-zinc-600 group-hover:text-[#00FF00] inline-flex items-center gap-1 text-[11px] font-bold uppercase transition-colors">
-                        <span>DOSSIER</span>
-                        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                      </span>
+                      <div className="flex items-center justify-end gap-2">
+                        {!isCurrent && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerDirectChallenge(user.username, undefined, user.elo);
+                            }}
+                            className="px-2 py-0.5 bg-[#00FF00]/10 hover:bg-[#00FF00] border border-[#00FF00]/40 text-[#00FF00] hover:text-black font-black uppercase text-[9px] tracking-wider transition-all cursor-pointer inline-flex items-center gap-1"
+                            title={`Send direct duel challenge to ${user.username}`}
+                          >
+                            <Swords className="w-2.5 h-2.5" />
+                            <span>CHALLENGE</span>
+                          </button>
+                        )}
+                        <span className="text-zinc-600 group-hover:text-[#00FF00] inline-flex items-center gap-1 text-[11px] font-bold uppercase transition-colors">
+                          <span>DOSSIER</span>
+                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 );

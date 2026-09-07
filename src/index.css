@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+:root {
+  --neon-primary: #00FF00;
+  --neon-secondary: #00CC00;
+  --neon-rgb: 0, 255, 0;
+  --neon-contrast: #000000;
+  --neon-glow: 0 0 16px rgba(0, 255, 0, 0.35);
+  --neon-glow-lg: 0 0 28px rgba(0, 255, 0, 0.5);
+}
+
 @layer base {
   body {
     font-family: 'Chivo', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -35,39 +44,72 @@
   }
 
   button:not(:disabled):hover {
-    box-shadow: 0 0 12px rgba(0, 255, 0, 0.22);
+    box-shadow: 0 0 14px rgba(var(--neon-rgb), 0.25);
   }
 
   button:not(:disabled):focus-visible {
     outline: none;
-    box-shadow: 0 0 16px rgba(0, 255, 0, 0.4), 0 0 0 1px #00FF00;
+    box-shadow: 0 0 16px rgba(var(--neon-rgb), 0.45), 0 0 0 1px var(--neon-primary);
   }
 
-  /* Subtle green glow on card elements */
+  /* Subtle glow on card elements */
   .card, [class*="card"], [class*="Card"] {
     transition: box-shadow 0.25s ease, border-color 0.25s ease;
   }
 
   .card:hover, [class*="card"]:hover, [class*="Card"]:hover {
-    box-shadow: 0 0 16px rgba(0, 255, 0, 0.16);
+    box-shadow: 0 0 16px rgba(var(--neon-rgb), 0.18);
   }
 }
 
 @layer utilities {
+  .text-neon {
+    color: var(--neon-primary);
+  }
+
+  .bg-neon {
+    background-color: var(--neon-primary);
+    color: var(--neon-contrast);
+  }
+
+  .border-neon {
+    border-color: var(--neon-primary);
+  }
+
+  .border-neon-alpha {
+    border-color: rgba(var(--neon-rgb), 0.4);
+  }
+
+  .bg-neon-alpha {
+    background-color: rgba(var(--neon-rgb), 0.12);
+  }
+
+  .bg-neon-alpha-heavy {
+    background-color: rgba(var(--neon-rgb), 0.22);
+  }
+
+  .shadow-neon {
+    box-shadow: 0 0 14px rgba(var(--neon-rgb), 0.3);
+  }
+
+  .shadow-neon-lg {
+    box-shadow: 0 0 25px rgba(var(--neon-rgb), 0.45);
+  }
+
   .cyber-glow {
-    box-shadow: 0 0 12px rgba(0, 255, 0, 0.2);
+    box-shadow: 0 0 12px rgba(var(--neon-rgb), 0.25);
   }
 
   .cyber-glow-lg {
-    box-shadow: 0 0 24px rgba(0, 255, 0, 0.35);
+    box-shadow: 0 0 24px rgba(var(--neon-rgb), 0.45);
   }
 
   .cyber-card-glow {
-    box-shadow: 0 0 8px rgba(0, 255, 0, 0.08);
+    box-shadow: 0 0 8px rgba(var(--neon-rgb), 0.1);
   }
 
   .cyber-card-glow:hover {
-    box-shadow: 0 0 20px rgba(0, 255, 0, 0.25);
+    box-shadow: 0 0 20px rgba(var(--neon-rgb), 0.3);
   }
 
   .custom-scrollbar::-webkit-scrollbar {

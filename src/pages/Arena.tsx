@@ -8,8 +8,8 @@ import {
   Play, CheckSquare, MessageSquare, ShieldAlert, ArrowLeft, Loader2, 
   Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, 
   Code2, Flag, Zap, ChevronUp, ChevronDown, ChevronRight, Copy, CheckCheck, Plus, 
-  Clock, Cpu, AlertCircle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope,
-  Layers, ZoomIn, ZoomOut, History, Share2, Columns, Maximize2, Minimize2
+  Clock, Cpu, AlertCircle, AlertTriangle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope,
+  Layers, ZoomIn, ZoomOut, History, Share2, Columns, Maximize2, Minimize2, Users
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
@@ -18,6 +18,8 @@ import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
 import { ConnectionStatus, useConnectionStatus } from '../components/ConnectionStatus';
 import { EditorThemeSelector } from '../components/EditorThemeSelector';
+import { NeonPaletteSelector } from '../components/NeonPaletteSelector';
+import { useNeonTheme } from '../lib/neonThemes';
 import { getStoredTheme, saveStoredTheme, registerMonacoThemes } from '../lib/editorThemes';
 import { SoundToggle } from '../components/SoundToggle';
 import { soundManager } from '../lib/soundEffects';
@@ -27,8 +29,10 @@ import { LineByLineAnalyzer } from '../components/LineByLineAnalyzer';
 import { LanguageDropdown, SUPPORTED_LANGUAGES } from '../components/LanguageDropdown';
 import { recordCompletedMatch } from '../lib/matchHistoryStorage';
 import { SubmissionCodeViewer } from '../components/SubmissionCodeViewer';
+import { MatchCodeReplay } from '../components/MatchCodeReplay';
 import { CountdownTimer, AmbientUrgencyBar, CriticalUrgencyBanner } from '../components/CountdownTimer';
 import { SocialShareModal, SocialShareButton } from '../components/SocialShareModal';
+import { AfkWarningModal } from '../components/AfkWarningModal';
 import { triggerDuelVictoryConfetti, triggerQuickSuccessConfetti } from '../lib/confetti';
 import { AutoSaveStatusBadge, AutoSaveRecoveryBanner, AutoSaveState } from '../components/AutoSaveIndicator';
 import { getAutoSavedDraft, saveAutoSaveDraft, clearAutoSaveDraft } from '../lib/codeAutoSave';
@@ -48,6 +52,9 @@ import {
   BoilerplateControls, 
   BoilerplateNotificationBanner 
 } from '../components/BoilerplateControls';
+import { AIHelper } from '../components/AIHelper';
+import { AIHelperItem } from '../types';
+import { OpponentProfileModal } from '../components/OpponentProfileModal';
 
 const STARTER_TEMPLATES: Record<string, string> = {
   javascript: getLanguageBoilerplate('javascript'),
@@ -70,6 +77,8 @@ export function Arena() {
     setProfileSetupOpen, 
     setPendingRoomId 
   } = useStore();
+
+  const { palette: neonTheme } = useNeonTheme();
 
   const isProfileReady = Boolean(
     accountProfile?.isSetupComplete && (accountProfile.username || currentUser.name)
@@ -193,10 +202,16 @@ export function Arena() {
   const [selectedTopic, setSelectedTopic] = useState(queryTopic || 'Dynamic Programming');
   const [hintLoading, setHintLoading] = useState(false);
   const [recentHint, setRecentHint] = useState<string | null>(null);
+  const [hintsUsed, setHintsUsed] = useState<number>(0);
+  const [hintCostPenalty, setHintCostPenalty] = useState<number>(0);
+  const hintsUsedRef = useRef<number>(0);
+  hintsUsedRef.current = hintsUsed;
+  const hintCostPenaltyRef = useRef<number>(0);
+  hintCostPenaltyRef.current = hintCostPenalty;
   const [matchEndReason, setMatchEndReason] = useState<string | null>(null);
   const [postMatchReview, setPostMatchReview] = useState<EvaluationResult['review'] | null>(null);
   const [matchOverCodes, setMatchOverCodes] = useState<Record<string, { code: string; language: string; name: string }>>({});
-  const [postMatchTab, setPostMatchTab] = useState<'summary' | 'diff' | 'expected' | 'doctor'>('summary');
+  const [postMatchTab, setPostMatchTab] = useState<'summary' | 'replay' | 'diff' | 'expected' | 'doctor'>('summary');
   const [diffExpectedOverride, setDiffExpectedOverride] = useState<string | null>(null);
   const [isForfeiting, setIsForfeiting] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
@@ -215,6 +230,45 @@ export function Arena() {
   const prevOpponentsCountRef = useRef(0);
   const [matchFoundNotice, setMatchFoundNotice] = useState<string | null>(null);
   const [duelStartNotice, setDuelStartNotice] = useState(false);
+  const [isOpponentProfileOpen, setIsOpponentProfileOpen] = useState(false);
+  const [inspectedOpponent, setInspectedOpponent] = useState<{
+    name: string;
+    elo?: number;
+    isBot?: boolean;
+  } | null>(null);
+
+  const openOpponentProfile = (name?: string, elo?: number, isBot?: boolean) => {
+    const targetName = name || opponent?.name;
+    if (!targetName) return;
+    soundManager.playClick();
+    setInspectedOpponent({
+      name: targetName,
+      elo: elo !== undefined ? elo : (opponent?.elo ? Number(opponent.elo) : undefined),
+      isBot: isBot !== undefined ? isBot : Boolean(opponent?.isAi || targetName === 'AlgoArena Bot' || targetName.toLowerCase().includes('bot')),
+    });
+    setIsOpponentProfileOpen(true);
+  };
+
+  // Fair Play & Inactivity Warning States
+  const [isAfkWarningOpen, setIsAfkWarningOpen] = useState(false);
+  const [afkCountdown, setAfkCountdown] = useState(30);
+  const [opponentAfkNotice, setOpponentAfkNotice] = useState<{
+    username: string;
+    remainingSecs: number;
+  } | null>(null);
+
+  const lastActivityRef = useRef<number>(Date.now());
+  const isAfkWarningOpenRef = useRef<boolean>(false);
+  const afkCountdownRef = useRef<number>(30);
+
+  const recordUserActivity = () => {
+    lastActivityRef.current = Date.now();
+    if (isAfkWarningOpenRef.current) {
+      isAfkWarningOpenRef.current = false;
+      setIsAfkWarningOpen(false);
+      socket.emit('player_afk_warning', { roomId, isWarning: false });
+    }
+  };
 
   const codeRef = useRef(code);
   codeRef.current = code;
@@ -231,6 +285,11 @@ export function Arena() {
   const evalResultRef = useRef(evalResult);
   evalResultRef.current = evalResult;
   const victoryConfettiFiredRef = useRef(false);
+
+  // Scroll chat log automatically on new message
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chat]);
 
   // Debounced auto-save to localStorage preserving user progress
   useEffect(() => {
@@ -380,6 +439,8 @@ export function Arena() {
       if (msg.isHint) {
         setRecentHint(msg.text.replace(/^💡\s*DSA HINT:\s*/, ''));
         setHintLoading(false);
+      } else if (!msg.system && msg.user && msg.user !== currentUser?.name) {
+        soundManager.playNotification();
       }
     });
 
@@ -392,6 +453,10 @@ export function Arena() {
       setEvalResult(null);
       setMyProgress(0);
       setRecentHint(null);
+      setHintsUsed(0);
+      setHintCostPenalty(0);
+      hintsUsedRef.current = 0;
+      hintCostPenaltyRef.current = 0;
     });
 
     socket.on('opponent_progress', ({ progress }) => {
@@ -440,6 +505,14 @@ export function Arena() {
 
         const passedCount = currentEval?.testResults?.filter(t => t.passed).length || (isWin ? 5 : 2);
         const totalCount = currentEval?.testResults?.length || 5;
+        const currentHintsUsed = hintsUsedRef.current;
+        const currentHintCost = hintCostPenaltyRef.current;
+        const baseScore = Math.max(200, Math.round(1000 - elapsedSecs * 1.2));
+        const finalScore = Math.max(0, baseScore - currentHintCost);
+
+        const oppCodeSaved = currentOpponents[0]?.id && codeByUserId?.[currentOpponents[0].id]?.code
+          ? codeByUserId[currentOpponents[0].id].code
+          : currentOpponents[0]?.submittedCode;
 
         recordCompletedMatch(userName, {
           id: `MT-${Date.now().toString().slice(-6)}`,
@@ -454,10 +527,23 @@ export function Arena() {
           testScore: `${passedCount}/${totalCount} (${Math.round((passedCount / totalCount) * 100)}%)`,
           completedAt: new Date().toISOString(),
           code: currentCode,
+          opponentCode: oppCodeSaved,
           review: userReview || currentEval?.review,
+          hintsUsed: currentHintsUsed,
+          hintCostPenalty: currentHintCost,
+          baseScore,
+          finalScore,
         }).catch(console.warn);
       } catch (e) {
         console.warn('Failed to record completed arena match session', e);
+      }
+    });
+
+    socket.on('opponent_afk_warning', ({ username, isWarning, remainingSecs }: { username: string; isWarning: boolean; remainingSecs: number }) => {
+      if (isWarning) {
+        setOpponentAfkNotice({ username: username || 'Opponent', remainingSecs: remainingSecs ?? 30 });
+      } else {
+        setOpponentAfkNotice(null);
       }
     });
 
@@ -468,6 +554,7 @@ export function Arena() {
       socket.off('match_started');
       socket.off('opponent_progress');
       socket.off('match_over');
+      socket.off('opponent_afk_warning');
     };
   }, [roomId, isProfileReady, currentUser, isPracticeMode, selectedTopic]);
 
@@ -523,6 +610,82 @@ export function Arena() {
     return `${m}:${s}`;
   };
 
+  // Fair Play Inactivity & AFK Auto-Forfeit Detection Engine
+  useEffect(() => {
+    if (room?.status !== 'active') {
+      if (isAfkWarningOpenRef.current) {
+        isAfkWarningOpenRef.current = false;
+        setIsAfkWarningOpen(false);
+      }
+      return;
+    }
+
+    // Initialize activity timestamp when entering active match
+    lastActivityRef.current = Date.now();
+
+    const handleUserActivity = () => {
+      recordUserActivity();
+    };
+
+    window.addEventListener('keydown', handleUserActivity, { passive: true });
+    window.addEventListener('mousemove', handleUserActivity, { passive: true });
+    window.addEventListener('mousedown', handleUserActivity, { passive: true });
+    window.addEventListener('touchstart', handleUserActivity, { passive: true });
+    window.addEventListener('scroll', handleUserActivity, { passive: true });
+
+    const afkInterval = setInterval(() => {
+      if (roomRef.current?.status !== 'active') {
+        if (isAfkWarningOpenRef.current) {
+          isAfkWarningOpenRef.current = false;
+          setIsAfkWarningOpen(false);
+        }
+        return;
+      }
+
+      const idleDurationMs = Date.now() - lastActivityRef.current;
+
+      // Threshold: 60s (60,000ms) without activity triggers the 30-second warning countdown
+      if (!isAfkWarningOpenRef.current) {
+        if (idleDurationMs >= 60000) {
+          isAfkWarningOpenRef.current = true;
+          setIsAfkWarningOpen(true);
+          afkCountdownRef.current = 30;
+          setAfkCountdown(30);
+          soundManager.playAfkWarning();
+          socket.emit('player_afk_warning', { roomId, isWarning: true, remainingSecs: 30 });
+        }
+      } else {
+        // Warning is active: decrement countdown
+        const nextSecs = afkCountdownRef.current - 1;
+        afkCountdownRef.current = nextSecs;
+        setAfkCountdown(nextSecs);
+
+        if (nextSecs > 0) {
+          soundManager.playUrgentTick();
+          socket.emit('player_afk_warning', { roomId, isWarning: true, remainingSecs: nextSecs });
+        } else {
+          // Auto-forfeit penalty execution when countdown hits 0:00
+          isAfkWarningOpenRef.current = false;
+          setIsAfkWarningOpen(false);
+          setIsForfeiting(true);
+          soundManager.playTimeUpWarning();
+          socket.emit('forfeit_match', { roomId, reason: 'afk_idle' });
+          const opponentUser = Object.values(roomRef.current?.users || {}).find((u: any) => u.id !== socket.id) as any;
+          setRoom(curr => curr ? { ...curr, status: 'finished', winner: opponentUser?.id } : curr);
+        }
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(afkInterval);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('mousedown', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      window.removeEventListener('scroll', handleUserActivity);
+    };
+  }, [room?.status, roomId]);
+
   const toggleReady = () => {
     socket.emit('toggle_ready', { roomId, difficulty: selectedDifficulty });
   };
@@ -541,9 +704,29 @@ export function Arena() {
     });
   };
 
+  const handleHintApplied = (cost: number, item: AIHelperItem) => {
+    setHintsUsed(prev => prev + 1);
+    setHintCostPenalty(prev => prev + cost);
+    hintsUsedRef.current += 1;
+    hintCostPenaltyRef.current += cost;
+    setRecentHint(item.content);
+    setChat(prev => [
+      ...prev,
+      {
+        user: 'GEMINI AI HELPER',
+        text: `[HINT PENALTY -${cost} PTS APPLIED] ${item.type.toUpperCase()}: ${item.content.substring(0, 80)}...`,
+        isHint: true,
+      }
+    ]);
+  };
+
   const requestBotHint = () => {
     if (hintLoading || !room?.problem) return;
     setHintLoading(true);
+    setHintsUsed(prev => prev + 1);
+    setHintCostPenalty(prev => prev + 50);
+    hintsUsedRef.current += 1;
+    hintCostPenaltyRef.current += 50;
     socket.emit('request_bot_hint', { roomId });
     setTimeout(() => setHintLoading(false), 4000);
   };
@@ -718,12 +901,14 @@ export function Arena() {
   const sendChat = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
+    recordUserActivity();
     socket.emit('send_chat', { roomId, text: chatInput });
     setChatInput('');
   };
 
   const runCode = async () => {
     if (!room?.problem || isRunningCode || isEvaluating) return;
+    recordUserActivity();
     setIsRunningCode(true);
     setIsConsoleExpanded(true);
     setActiveConsoleTab('cases');
@@ -789,6 +974,7 @@ export function Arena() {
 
   const submitCode = async () => {
     if (!room?.problem || isEvaluating || isRunningCode) return;
+    recordUserActivity();
     setIsEvaluating(true);
     setEvalResult(null);
     setIsConsoleExpanded(true);
@@ -853,6 +1039,9 @@ export function Arena() {
         const durationRemSecs = elapsedSecs % 60;
         const formattedDuration = `${durationMins}m ${durationRemSecs.toString().padStart(2, '0')}s`;
 
+        const baseScore = Math.max(200, Math.round(1000 - elapsedSecs * 1.2));
+        const finalScore = Math.max(0, baseScore - hintCostPenalty);
+
         socket.emit('match_won', { 
           roomId,
           problemTitle: room.problem.title,
@@ -863,6 +1052,10 @@ export function Arena() {
           totalTests: totalCount,
           code,
           review: result.review,
+          hintsUsed,
+          hintCostPenalty,
+          baseScore,
+          finalScore,
         });
       }
       
@@ -1028,27 +1221,45 @@ export function Arena() {
       />
 
       {/* Top Navbar */}
-      <nav className="h-14 border-b border-[#00FF00]/30 flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0 z-10">
+      <nav 
+        className="h-14 border-b flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0 z-10 transition-colors"
+        style={{ borderColor: `rgba(${neonTheme.rgb}, 0.3)` }}
+      >
         <div className="flex items-center gap-4">
           <button 
             onClick={leaveRoom} 
-            className="flex items-center gap-1.5 text-zinc-400 hover:text-[#00FF00] transition-colors px-2 py-1 border border-white/10 hover:border-[#00FF00]/50 font-mono text-[10px] font-bold uppercase cursor-pointer"
+            className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors px-2 py-1 border border-white/10 font-mono text-[10px] font-bold uppercase cursor-pointer"
             title={room.status === 'active' ? 'Forfeit the active match first' : 'Leave room'}
           >
             <ArrowLeft className="w-4 h-4" /> LEAVE ROOM
           </button>
           <div className="flex items-center gap-3">
-            <span className="text-[#00FF00] font-black text-lg sm:text-xl tracking-tighter uppercase">
+            <span 
+              className="font-black text-lg sm:text-xl tracking-tighter uppercase transition-colors"
+              style={{ color: neonTheme.hex }}
+            >
               ALGOARENA // MATCH
             </span>
-            <span className="bg-[#00FF00]/10 text-[#00FF00] text-[10px] px-2 py-0.5 border border-[#00FF00]/30 font-mono uppercase font-bold hidden md:inline-block">
+            <span 
+              className="text-[10px] px-2 py-0.5 border font-mono uppercase font-bold hidden md:inline-block"
+              style={{
+                backgroundColor: `rgba(${neonTheme.rgb}, 0.1)`,
+                borderColor: `rgba(${neonTheme.rgb}, 0.35)`,
+                color: neonTheme.hex
+              }}
+            >
               Room: #{roomId}
             </span>
             <ConnectionStatus />
           </div>
         </div>
         
-        <div className="flex items-center gap-3 sm:gap-5">
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Persona Combat HUD Neon Palette Selector */}
+          <div className="hidden lg:block">
+            <NeonPaletteSelector />
+          </div>
+
           {/* Social Share Duel Button */}
           <SocialShareButton 
             roomId={roomId || ''} 
@@ -1072,7 +1283,14 @@ export function Arena() {
 
           {/* Opponent Profile status */}
           <div className="flex items-center gap-3">
-            <div className="text-right">
+            <div 
+              onClick={() => opponent && openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
+              className={clsx(
+                "text-right group transition-all",
+                opponent ? "cursor-pointer hover:opacity-95" : ""
+              )}
+              title={opponent ? `Click to inspect ${opponent.name}'s profile and send friend request` : undefined}
+            >
               <p className="text-[10px] font-bold uppercase text-zinc-500 flex items-center justify-end gap-1">
                 {opponent?.name === 'AlgoArena Bot' ? (
                   <>
@@ -1085,24 +1303,46 @@ export function Arena() {
                     <span>GEMINI AI OPPONENT</span>
                   </>
                 ) : (
-                  <span>OPPONENT</span>
+                  <span className="group-hover:text-[#00FF00] transition-colors">
+                    OPPONENT • <span className="underline decoration-[#00FF00]/50">[VIEW PROFILE]</span>
+                  </span>
                 )}
               </p>
-              <p className="text-xs sm:text-sm font-bold text-white">
-                {opponent ? opponent.name : 'AWAITING DUELIST...'} 
+              <p className="text-xs sm:text-sm font-bold text-white flex items-center justify-end gap-1">
+                <span className="group-hover:text-[#00FF00] group-hover:underline transition-colors">
+                  {opponent ? opponent.name : 'AWAITING DUELIST...'}
+                </span>
                 <span className="text-[#F27D26] ml-1 font-mono text-xs">
-                  {opponent?.name === 'AlgoArena Bot' ? '[PRACTICE BOT]' : '[Diamond III]'}
+                  {opponent?.name === 'AlgoArena Bot' 
+                    ? '[PRACTICE BOT]' 
+                    : opponent?.elo 
+                      ? `[${opponent.elo} ELO]` 
+                      : '[1450 ELO]'}
                 </span>
               </p>
             </div>
-            <div className={clsx(
-              "w-8 h-8 border flex items-center justify-center font-mono text-xs font-bold uppercase",
-              opponent?.ready ? "border-[#00FF00] bg-[#00FF00]/20 text-[#00FF00]" : "border-white/10 bg-zinc-900 text-zinc-600"
-            )}>
+            <button
+              type="button"
+              onClick={() => opponent && openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
+              className={clsx(
+                "w-8 h-8 border flex items-center justify-center font-mono text-xs font-bold uppercase transition-all",
+                opponent ? "cursor-pointer hover:scale-105" : "",
+                opponent?.ready ? "border-[#00FF00] bg-[#00FF00]/20 text-[#00FF00] shadow-[0_0_10px_rgba(0,255,0,0.3)]" : "border-white/10 bg-zinc-900 text-zinc-600 hover:border-white/30"
+              )}
+              title={opponent ? `Click to view ${opponent.name}'s profile & stats` : undefined}
+            >
               {opponent?.name === 'AlgoArena Bot' ? <Bot className="w-4 h-4 text-[#00FF00]" /> : opponent ? opponent.name[0] : '?'}
-            </div>
-            {opponent && !opponent.isAi && (
-              <FriendActions username={opponent.name} compact showProfileLink />
+            </button>
+            {opponent && (
+              <button
+                type="button"
+                onClick={() => openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
+                className="px-2.5 py-1 bg-black hover:bg-zinc-900 border border-[#00FF00]/40 text-[#00FF00] hover:text-white font-mono text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer shadow-[0_0_8px_rgba(0,255,0,0.15)]"
+                title={`Inspect ${opponent.name}'s stats, combat records & friend actions`}
+              >
+                <Users className="w-3 h-3" />
+                <span className="hidden sm:inline">PROFILE & STATS</span>
+              </button>
             )}
           </div>
 
@@ -1111,11 +1351,16 @@ export function Arena() {
             {room.status === 'waiting' && (
               <button 
                 onClick={toggleReady}
+                style={!me?.ready ? {
+                  backgroundColor: neonTheme.hex,
+                  color: neonTheme.contrastText,
+                  boxShadow: `0 0 15px rgba(${neonTheme.rgb}, 0.35)`
+                } : undefined}
                 className={clsx(
                   "px-5 py-2 font-black uppercase text-xs tracking-widest transition-all cursor-pointer",
                   me?.ready 
                     ? "bg-zinc-800 text-zinc-300 border border-white/20 hover:bg-zinc-700" 
-                    : "bg-[#00FF00] text-black hover:bg-[#00CC00] shadow-[0_0_15px_rgba(0,255,0,0.3)]"
+                    : "hover:opacity-90"
                 )}
               >
                 {me?.ready ? 'CANCEL READY' : 'HIT READY [F5]'}
@@ -1153,7 +1398,7 @@ export function Arena() {
               ⚔️
             </div>
             <span className="font-black uppercase tracking-wider text-[11px]">
-              MATCH FOUND // OPPONENT DETECTED: <span className="text-white underline decoration-[#00FF00]">{matchFoundNotice}</span> HAS ENTERED THE ARENA GRID
+              MATCH FOUND // OPPONENT DETECTED: <button type="button" onClick={() => openOpponentProfile(matchFoundNotice)} className="text-white underline decoration-[#00FF00] hover:text-[#00FF00] font-black cursor-pointer">{matchFoundNotice}</button> HAS ENTERED THE ARENA GRID
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1196,6 +1441,31 @@ export function Arena() {
             >
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Real-Time Opponent Inactivity & Fair Play Warning Banner */}
+      {opponentAfkNotice && room?.status === 'active' && (
+        <div 
+          id="arena-opponent-afk-banner"
+          className="bg-red-950/90 border-b-2 border-red-500 px-4 py-2.5 flex items-center justify-between text-red-200 font-mono text-xs z-30 shadow-[0_0_20px_rgba(239,68,68,0.3)] animate-pulse"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-5 h-5 rounded-full bg-red-500 text-black flex items-center justify-center font-black text-xs shrink-0">
+              ⚠️
+            </div>
+            <span className="font-black uppercase tracking-wider text-[11px]">
+              FAIR PLAY TELEMETRY // OPPONENT ({opponentAfkNotice.username}) IS INACTIVE. AUTOMATIC FORFEIT IN 00:{opponentAfkNotice.remainingSecs.toString().padStart(2, '0')}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 font-bold">
+            <span className="text-[10px] text-red-300 uppercase tracking-widest hidden sm:inline">
+              COUNTDOWN:
+            </span>
+            <span className="bg-black/70 px-2 py-0.5 border border-red-500/60 text-red-400 text-xs tracking-wider">
+              00:{opponentAfkNotice.remainingSecs.toString().padStart(2, '0')}
+            </span>
           </div>
         </div>
       )}
@@ -1289,21 +1559,43 @@ export function Arena() {
                     </div>
 
                     {/* Challenger / Opponent Row */}
-                    <div className="flex items-center justify-between py-0.5 border-t border-white/5">
+                    <div className="flex items-center justify-between py-1 border-t border-white/5">
                       {opponents.length > 0 ? (
                         <>
-                          <div className="flex items-center gap-2">
-                            <div className="w-5 h-5 bg-amber-500/20 border border-amber-500 text-amber-400 flex items-center justify-center font-bold text-[9px]">
+                          <div 
+                            onClick={() => openOpponentProfile(opponent?.name, opponent?.elo ? Number(opponent.elo) : undefined, opponent?.isAi)}
+                            className="flex items-center gap-2 cursor-pointer group"
+                            title={`Inspect ${opponent?.name}'s profile & send friend request`}
+                          >
+                            <div className="w-6 h-6 bg-amber-500/20 border border-amber-500 text-amber-400 flex items-center justify-center font-bold text-[9px] group-hover:scale-105 transition-transform">
                               {opponent?.name ? opponent.name.slice(0, 2).toUpperCase() : 'OP'}
                             </div>
-                            <span className="text-white font-bold text-xs">{opponent?.name}</span>
+                            <div>
+                              <span className="text-white font-bold text-xs group-hover:text-[#00FF00] group-hover:underline transition-colors block">
+                                {opponent?.name}
+                              </span>
+                              <span className="text-[9px] text-[#F27D26] font-mono block">
+                                {opponent?.elo ? `${opponent.elo} ELO` : 'CHALLENGER'}
+                              </span>
+                            </div>
                           </div>
-                          <OnlineStatusIndicator
-                            isOnline={true}
-                            status={opponent?.ready ? 'IN DUEL' : 'ONLINE'}
-                            showLabel={true}
-                            size="sm"
-                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openOpponentProfile(opponent?.name, opponent?.elo ? Number(opponent.elo) : undefined, opponent?.isAi)}
+                              className="px-2 py-0.5 bg-[#00FF00]/10 hover:bg-[#00FF00]/20 border border-[#00FF00]/40 text-[#00FF00] font-mono text-[9px] font-bold uppercase flex items-center gap-1 transition-all cursor-pointer"
+                              title={`Inspect ${opponent?.name}'s stats`}
+                            >
+                              <Users className="w-2.5 h-2.5" />
+                              <span>VIEW STATS</span>
+                            </button>
+                            <OnlineStatusIndicator
+                              isOnline={true}
+                              status={opponent?.ready ? 'IN DUEL' : 'ONLINE'}
+                              showLabel={true}
+                              size="sm"
+                            />
+                          </div>
                         </>
                       ) : (
                         <>
@@ -1474,45 +1766,17 @@ export function Arena() {
                   </ul>
                 </div>
 
-                {/* AlgoArena Bot DSA Coach / Hint Assistant */}
-                <div className="border border-[#00FF00]/30 bg-[#00FF00]/5 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-[#00FF00] uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                      <Bot className="w-3.5 h-3.5 text-[#00FF00]" />
-                      ALGOARENA BOT // DSA COACH
-                    </span>
-                    <button
-                      onClick={requestBotHint}
-                      disabled={hintLoading}
-                      className="px-2 py-1 bg-[#00FF00]/20 hover:bg-[#00FF00]/30 border border-[#00FF00]/40 text-[#00FF00] text-[10px] font-mono font-bold uppercase cursor-pointer disabled:opacity-50 flex items-center gap-1 transition-all"
-                    >
-                      {hintLoading ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          <span>ANALYZING...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Lightbulb className="w-3 h-3" />
-                          <span>GET DSA HINT</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  {recentHint ? (
-                    <div className="p-2.5 bg-black/80 border border-[#00FF00]/40 text-zinc-200 text-[11px] font-mono leading-relaxed shadow-[0_0_10px_rgba(0,255,0,0.1)]">
-                      <div className="text-[#00FF00] font-bold flex items-center gap-1 mb-1">
-                        <Lightbulb className="w-3 h-3" />
-                        <span>HINT DISPATCH:</span>
-                      </div>
-                      <p className="text-zinc-300">{recentHint}</p>
-                    </div>
-                  ) : (
-                    <p className="text-[10px] font-mono text-zinc-500 italic">
-                      Need guidance on edge cases, recurrence formulas, or data structures? Click to request a targeted DSA hint from AlgoArena Bot.
-                    </p>
-                  )}
-                </div>
+                {/* Gemini AI Helper DSA Coach with Hint Penalty */}
+                <AIHelper
+                  problem={room.problem}
+                  code={code}
+                  language={language}
+                  roomId={roomId}
+                  hintsUsed={hintsUsed}
+                  hintCostPenalty={hintCostPenalty}
+                  onHintApplied={handleHintApplied}
+                  isMatchActive={room.status === 'active'}
+                />
 
                 {/* Sabotage Ready Indicator */}
                 <div className="mt-auto border border-[#00FF00]/20 bg-[#00FF00]/5 p-3 rounded-none">
@@ -1624,6 +1888,9 @@ export function Arena() {
                 onSelectTheme={handleThemeChange} 
               />
 
+              {/* Combat Persona Neon Palette Selector */}
+              <NeonPaletteSelector compact />
+
               {/* Sound FX Toggle */}
               <SoundToggle compact />
 
@@ -1700,6 +1967,7 @@ export function Arena() {
               value={code}
               onChange={val => {
                 const nextVal = val || '';
+                recordUserActivity();
                 setCode(nextVal);
                 setCodeBuffers(prev => ({ ...prev, [language]: nextVal }));
                 setAutoSaveStatus('saving');
@@ -1782,6 +2050,19 @@ export function Arena() {
                       </button>
 
                       <button
+                        onClick={() => setPostMatchTab('replay')}
+                        className={clsx(
+                          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded transition-all",
+                          postMatchTab === 'replay'
+                            ? "bg-[#00FF00]/20 text-[#00FF00] font-bold border border-[#00FF00]/30 shadow-sm"
+                            : "text-zinc-400 hover:text-white"
+                        )}
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>View Code Replay</span>
+                      </button>
+
+                      <button
                         onClick={() => setPostMatchTab('diff')}
                         className={clsx(
                           "flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded transition-all",
@@ -1822,6 +2103,21 @@ export function Arena() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => setPostMatchTab('replay')} 
+                        className={clsx(
+                          "px-3 py-1.5 font-mono text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border",
+                          postMatchTab === 'replay'
+                            ? "bg-[#00FF00] text-black border-[#00FF00] shadow-[0_0_12px_rgba(0,255,0,0.4)]"
+                            : "bg-[#00FF00]/15 hover:bg-[#00FF00]/25 border-[#00FF00]/50 hover:border-[#00FF00] text-[#00FF00] shadow-[0_0_10px_rgba(0,255,0,0.15)]"
+                        )}
+                        title="Review step-by-step code replay for yourself or your opponent"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>View Code Replay</span>
+                      </button>
+
                       {room.winner === socket.id && (
                         <button 
                           type="button"
@@ -1863,16 +2159,76 @@ export function Arena() {
                         <h2 className="text-4xl font-black italic uppercase tracking-tighter text-white mb-2">
                           {room.winner === socket.id ? 'MATCH WON' : 'DEFEAT'}
                         </h2>
+                        {matchEndReason === 'afk_idle' && (
+                          <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 bg-red-500/20 border border-red-500/50 text-red-400 font-mono text-xs font-bold uppercase tracking-wider">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>{room.winner === socket.id ? 'Opponent Inactivity Auto-Forfeit' : 'Inactivity Penalty // Auto-Forfeited'}</span>
+                          </div>
+                        )}
                         <p className="text-zinc-400 font-mono text-sm mb-5 uppercase tracking-wider">
-                          {matchEndReason === 'forfeit'
-                            ? 'The match ended by forfeit. The remaining player receives the victory.'
-                            : matchEndReason === 'disconnect'
-                              ? 'The match ended because a player disconnected. The remaining player receives the victory.'
-                              : room.winner === socket.id ? 'All test cases verified. ELO +25 Points.' : 'Opponent completed solution first.'}
+                          {matchEndReason === 'afk_idle'
+                            ? (room.winner === socket.id
+                                ? 'Fair Play Enforcement: Opponent was idle with no terminal activity and auto-forfeited. Victory awarded.'
+                                : 'Fair Play Enforcement: You were idle with no keystrokes for over 60 seconds and auto-forfeited.')
+                            : matchEndReason === 'forfeit'
+                              ? 'The match ended by forfeit. The remaining player receives the victory.'
+                              : matchEndReason === 'disconnect'
+                                ? 'The match ended because a player disconnected. The remaining player receives the victory.'
+                                : room.winner === socket.id ? 'All test cases verified. ELO +25 Points.' : 'Opponent completed solution first.'}
                         </p>
 
+                        {/* Match Score & AI Hint Penalty Telemetry */}
+                        <div className="w-full bg-[#0a0a0a] border border-white/10 p-3 mb-5 font-mono text-xs text-left">
+                          <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
+                            <span className="text-zinc-400 font-bold uppercase flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-[#00FF00]" />
+                              MATCH SCORE & HINT COST AUDIT
+                            </span>
+                            <span className="text-[10px] text-zinc-500 uppercase">
+                              {hintsUsed > 0 ? `${hintsUsed} AI HINT(S) USED` : 'CLEAN RUN (0 HINTS)'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-black/60 p-2 border border-white/5">
+                              <span className="text-[10px] text-zinc-500 uppercase block">BASE SCORE</span>
+                              <span className="text-sm font-black text-white">
+                                {Math.max(200, Math.round(1000 - Math.max(15, 600 - timerSeconds) * 1.2))} PTS
+                              </span>
+                            </div>
+                            <div className="bg-black/60 p-2 border border-white/5">
+                              <span className="text-[10px] text-zinc-500 uppercase block">HINTS USED</span>
+                              <span className="text-sm font-black text-zinc-300">{hintsUsed}</span>
+                            </div>
+                            <div className="bg-black/60 p-2 border border-white/5">
+                              <span className="text-[10px] text-zinc-500 uppercase block">HINT PENALTY</span>
+                              <span className={clsx("text-sm font-black", hintCostPenalty > 0 ? "text-amber-400" : "text-[#00FF00]")}>
+                                -{hintCostPenalty} PTS
+                              </span>
+                            </div>
+                            <div className="bg-black/60 p-2 border border-white/5">
+                              <span className="text-[10px] text-zinc-500 uppercase block">FINAL SCORE</span>
+                              <span className="text-sm font-black text-[#00FF00]">
+                                {Math.max(0, Math.max(200, Math.round(1000 - Math.max(15, 600 - timerSeconds) * 1.2)) - hintCostPenalty)} PTS
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
                         {/* Interactive Feature Callouts */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full mb-6 text-left">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full mb-6 text-left">
+                          <button
+                            onClick={() => setPostMatchTab('replay')}
+                            className="p-3 bg-black/60 hover:bg-white/10 border border-[#00FF00]/30 hover:border-[#00FF00] rounded-lg flex flex-col items-start gap-1 transition-all group shadow-[0_0_12px_rgba(0,255,0,0.1)]"
+                          >
+                            <div className="flex items-center gap-2 text-white font-mono text-xs font-bold group-hover:text-[#00FF00]">
+                              <Play className="w-4 h-4 text-[#00FF00] fill-[#00FF00]" />
+                              <span>View Code Replay</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 font-mono">
+                              Step-by-step keystroke replay of your own or opponent's solution.
+                            </p>
+                          </button>
+
                           <button
                             onClick={() => setPostMatchTab('diff')}
                             className="p-3 bg-black/60 hover:bg-white/10 border border-white/10 hover:border-[#00FF00]/40 rounded-lg flex flex-col items-start gap-1 transition-all group"
@@ -1944,6 +2300,46 @@ export function Arena() {
                             <FriendActions username={opponent.name} showProfileLink />
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {postMatchTab === 'replay' && (
+                      <div className="h-full w-full flex-1 min-h-[480px] flex flex-col">
+                        <MatchCodeReplay
+                          myCode={matchOverCodes[socket.id]?.code || code}
+                          myLanguage={matchOverCodes[socket.id]?.language || language}
+                          myName={currentUser.name || 'Your Code'}
+                          myOutcome={room.winner === socket.id ? 'Victory' : 'Defeat'}
+                          myPassedTests={evalResult?.testResults?.filter(t => t.passed).length ?? (room.winner === socket.id ? 5 : 2)}
+                          myTotalTests={evalResult?.testResults?.length || 5}
+                          opponentCode={
+                            matchOverCodes[opponent?.id || '']?.code 
+                            || opponent?.submittedCode 
+                            || (room?.users && opponent?.id ? room.users[opponent.id]?.submittedCode : '')
+                            || ''
+                          }
+                          opponentLanguage={
+                            matchOverCodes[opponent?.id || '']?.language 
+                            || opponent?.submittedLanguage 
+                            || (room?.users && opponent?.id ? room.users[opponent.id]?.submittedLanguage : '') 
+                            || language
+                          }
+                          opponentName={opponent?.name || (room?.winner && room.winner !== socket.id ? room.users?.[room.winner]?.name : 'AlgoArena Bot') || 'Opponent'}
+                          opponentOutcome={room.winner === socket.id ? 'Defeat' : 'Victory'}
+                          opponentPassedTests={room.winner === socket.id ? 2 : 5}
+                          opponentTotalTests={5}
+                          isOpponentBot={Boolean(opponent?.isAi || (opponent?.name || '').toLowerCase().includes('bot'))}
+                          problemTitle={room.problem?.title || 'Competitive Algorithm'}
+                          problemDifficulty={room.problem?.difficulty || 'Medium'}
+                          duration={(() => {
+                            const elapsed = Math.max(15, 600 - timerSeconds);
+                            const m = Math.floor(elapsed / 60);
+                            const s = elapsed % 60;
+                            return `${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
+                          })()}
+                          matchId={roomId || 'current-match'}
+                          onBackToSummary={() => setPostMatchTab('summary')}
+                        />
                       </div>
                     )}
 
@@ -2051,13 +2447,18 @@ export function Arena() {
               <button 
                 onClick={runCode}
                 disabled={room.status !== 'active' || isRunningCode || isEvaluating}
-                className="px-4 sm:px-5 py-2 bg-[#121212] hover:bg-zinc-900 text-[#00FF00] text-xs font-mono font-bold uppercase tracking-wider border border-[#00FF00]/40 hover:border-[#00FF00] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer shadow-[0_0_10px_rgba(0,255,0,0.15)]"
+                style={{
+                  color: neonTheme.hex,
+                  borderColor: `rgba(${neonTheme.rgb}, 0.5)`,
+                  boxShadow: `0 0 10px rgba(${neonTheme.rgb}, 0.15)`
+                }}
+                className="px-4 sm:px-5 py-2 bg-[#121212] hover:bg-zinc-900 text-xs font-mono font-bold uppercase tracking-wider border transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
                 title="Run code against sample test cases (Ctrl + Enter)"
               >
                 {isRunningCode ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00FF00]" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: neonTheme.hex }} />
                 ) : (
-                  <Terminal className="w-3.5 h-3.5 text-[#00FF00]" />
+                  <Terminal className="w-3.5 h-3.5" style={{ color: neonTheme.hex }} />
                 )}
                 <span>RUN CODE</span>
                 <kbd className="hidden md:inline text-[9px] bg-black px-1.5 py-0.5 border border-white/10 text-zinc-400 font-normal">
@@ -2069,12 +2470,17 @@ export function Arena() {
               <button 
                 onClick={submitCode}
                 disabled={room.status !== 'active' || isEvaluating || isRunningCode}
-                className="px-5 sm:px-7 py-2 bg-[#00FF00] text-black text-xs font-mono font-black uppercase tracking-wider hover:bg-[#00CC00] transition-colors shadow-[0_0_15px_rgba(0,255,0,0.3)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                style={{
+                  backgroundColor: neonTheme.hex,
+                  color: neonTheme.contrastText,
+                  boxShadow: `0 0 15px rgba(${neonTheme.rgb}, 0.35)`
+                }}
+                className="px-5 sm:px-7 py-2 text-xs font-mono font-black uppercase tracking-wider hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
                 title="Submit solution to match referee (Ctrl + Shift + Enter)"
               >
-                {isEvaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-black" /> : <Play className="w-3.5 h-3.5 fill-black" />}
+                {isEvaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
                 <span>SUBMIT</span>
-                <kbd className="hidden lg:inline text-[9px] bg-black/20 text-black px-1.5 py-0.5 font-normal">
+                <kbd className="hidden lg:inline text-[9px] bg-black/20 px-1.5 py-0.5 font-normal">
                   Ctrl+Shift+Enter
                 </kbd>
               </button>
@@ -2808,14 +3214,23 @@ export function Arena() {
                     </div>
                   ) : !msg.system ? (
                     <div>
-                      <span className={clsx(
-                        "font-black mr-2 uppercase inline-flex items-center gap-1",
-                        msg.user === me?.name 
-                          ? "text-[#00FF00]" 
-                          : msg.user === 'AlgoArena Bot' 
-                            ? "text-emerald-400" 
-                            : "text-[#F27D26]"
-                      )}>
+                      <span 
+                        onClick={() => {
+                          if (msg.user && msg.user !== me?.name) {
+                            openOpponentProfile(msg.user);
+                          }
+                        }}
+                        className={clsx(
+                          "font-black mr-2 uppercase inline-flex items-center gap-1",
+                          msg.user !== me?.name && "cursor-pointer hover:underline",
+                          msg.user === me?.name 
+                            ? "text-[#00FF00]" 
+                            : msg.user === 'AlgoArena Bot' 
+                              ? "text-emerald-400" 
+                              : "text-[#F27D26]"
+                        )}
+                        title={msg.user !== me?.name ? `Click to inspect ${msg.user}'s stats & profile` : undefined}
+                      >
                         {msg.user === 'AlgoArena Bot' && <Bot className="w-3 h-3 inline" />}
                         {msg.user}:
                       </span>
@@ -2858,6 +3273,24 @@ export function Arena() {
         roomStatus={room?.status}
         isWinner={room?.winner === socket.id}
         myElapsedDuration={formatTimer(600 - timerSeconds)}
+      />
+
+      {/* In-Arena Opponent Profile & Stats Modal */}
+      <OpponentProfileModal
+        isOpen={isOpponentProfileOpen}
+        onClose={() => setIsOpponentProfileOpen(false)}
+        opponentName={inspectedOpponent?.name || opponent?.name || null}
+        opponentElo={inspectedOpponent?.elo || (opponent?.elo ? Number(opponent.elo) : undefined)}
+        isBot={inspectedOpponent?.isBot ?? opponent?.isAi}
+      />
+
+      {/* Fair Play Inactivity & AFK Warning Modal */}
+      <AfkWarningModal
+        isOpen={isAfkWarningOpen}
+        remainingSeconds={afkCountdown}
+        totalCountdownSeconds={30}
+        onResume={recordUserActivity}
+        onForfeit={forfeitMatch}
       />
 
       {/* Telemetry Footer */}

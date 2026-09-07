@@ -10,6 +10,20 @@ import { Profile } from './pages/Profile';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { AuthModal } from './components/AuthModal';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
+import { DirectChallengeManager } from './components/DirectChallengeModal';
+import { FloatingLobbyChat } from './components/FloatingLobbyChat';
+import { useStore } from './store';
+
+function DirectChallengeHost() {
+  const { currentUser, accountProfile } = useStore();
+  const username = accountProfile?.username || currentUser?.name || 'Operator';
+  return (
+    <DirectChallengeManager
+      currentUsername={username}
+      currentElo={1200}
+    />
+  );
+}
 
 export default function App() {
   return (
@@ -24,6 +38,8 @@ export default function App() {
       </Routes>
       <AuthModal />
       <ProfileSetupModal />
+      <DirectChallengeHost />
+      <FloatingLobbyChat />
     </BrowserRouter>
   );
 }

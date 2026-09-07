@@ -19,6 +19,7 @@ export interface User {
   name: string;
   ready: boolean;
   progress: number; // percentage or number of tests passed
+  elo?: number;
   isAi?: boolean;
   isBot?: boolean;
   submittedCode?: string;
@@ -43,6 +44,18 @@ export interface ChatMessage {
   system?: boolean;
   isHint?: boolean;
   text: string;
+}
+
+export interface LobbyChatMessage {
+  id: string;
+  userId: string;
+  username: string;
+  text: string;
+  timestamp: number;
+  elo?: number;
+  avatar?: string;
+  badge?: string;
+  isSystem?: boolean;
 }
 
 export interface RunTestCaseResult {
@@ -195,6 +208,10 @@ export interface MatchRecord {
   optimalSolution?: string;
   playback?: CodePlaybackData;
   review?: CodeReviewData;
+  hintsUsed?: number;
+  hintCostPenalty?: number;
+  baseScore?: number;
+  finalScore?: number;
 }
 
 export interface UserProfileData {
@@ -205,6 +222,7 @@ export interface UserProfileData {
   nationality?: string;
   region?: string;
   photoURL?: string;
+  neonPalette?: string;
   friends?: string[];
   incomingFriendRequests?: string[];
   outgoingFriendRequests?: string[];
@@ -268,4 +286,61 @@ export interface LeaderboardResponse {
       novice: number;
     };
   };
+}
+
+export interface AIHelperRequest {
+  roomId?: string;
+  problem: {
+    title: string;
+    description: string;
+    difficulty: string;
+    examples?: any[];
+    constraints?: string[];
+  };
+  code?: string;
+  language?: string;
+  type: 'hint' | 'strategy' | 'custom';
+  customQuestion?: string;
+}
+
+export interface AIHelperResponse {
+  success: boolean;
+  type: 'hint' | 'strategy' | 'custom';
+  content: string;
+  cost: number;
+  timestamp: string;
+  keyTakeaway?: string;
+  error?: string;
+}
+
+export interface AIHelperItem {
+  id: string;
+  type: 'hint' | 'strategy' | 'custom';
+  content: string;
+  cost: number;
+  timestamp: string;
+  question?: string;
+}
+
+export interface DirectChallengePayload {
+  challengeId: string;
+  roomId: string;
+  senderSocketId: string;
+  senderUsername: string;
+  senderElo: number;
+  targetUsername: string;
+  targetSocketId?: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface ActiveLobbyUser {
+  socketId: string;
+  username: string;
+  elo: number;
+  status: 'online' | 'in-match' | 'in_match' | 'idle' | 'in_room';
+  lastSeen: number;
+  isBot?: boolean;
 }

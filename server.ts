@@ -1376,6 +1376,10 @@ interface MatchRecord {
   optimalSolution?: string;
   playback?: any;
   review?: any;
+  hintsUsed?: number;
+  hintCostPenalty?: number;
+  baseScore?: number;
+  finalScore?: number;
 }
 
 type FriendRequestStatus = 'none' | 'pending' | 'incoming' | 'friends' | 'self';
@@ -1388,6 +1392,7 @@ interface UserProfileData {
   nationality?: string;
   region?: string;
   photoURL?: string;
+  neonPalette?: string;
   friends: string[];
   incomingFriendRequests: string[];
   outgoingFriendRequests: string[];
@@ -1662,6 +1667,10 @@ function updateProfileWithMatch(
     optimalSolution: match.optimalSolution,
     playback: playbackData,
     review: match.review,
+    hintsUsed: (match as any).hintsUsed || 0,
+    hintCostPenalty: (match as any).hintCostPenalty || 0,
+    baseScore: (match as any).baseScore,
+    finalScore: (match as any).finalScore,
   };
 
   profile.matches.unshift(newMatchRecord);
@@ -1711,7 +1720,33 @@ async function startServer() {
   // In-memory state for rooms
   const rooms = new Map<string, any>();
   const botIntervals = new Map<string, NodeJS.Timeout>();
-  const activeSocketUsers = new Map<string, { socketId: string; username: string; lastSeen: number; roomId?: string }>();
+  
+  interface ActiveSocketUser {
+    socketId: string;
+    username: string;
+    elo?: number;
+    avatar?: string;
+    lastSeen: number;
+    roomId?: string;
+    status?: 'online' | 'in-match' | 'idle';
+  }
+  const activeSocketUsers = new Map<string, ActiveSocketUser>();
+
+  interface DirectChallengeSession {
+    challengeId: string;
+    roomId: string;
+    senderSocketId: string;
+    senderUsername: string;
+    senderElo: number;
+    targetUsername: string;
+    targetSocketId?: string;
+    difficulty: 'easy' | 'medium' | 'hard';
+    topic: string;
+    createdAt: number;
+    expiresAt: number;
+    timeoutHandle?: NodeJS.Timeout;
+  }
+  const activeChallenges = new Map<string, DirectChallengeSession>();
 
   function getOnlineUsernamesList(): string[] {
     const list: string[] = [];
@@ -1723,6 +1758,81 @@ async function startServer() {
     return list;
   }
 
+  function getLobbyOperatorsList() {
+    const list: Array<{
+      socketId: string;
+      username: string;
+      elo: number;
+      status: 'online' | 'in-match' | 'idle';
+      lastSeen: number;
+      isBot?: boolean;
+    }> = [];
+    const seenNames = new Set<string>();
+    const now = Date.now();
+
+    for (const u of activeSocketUsers.values()) {
+      if (u.username && u.username !== 'Anonymous Duelist') {
+        const lower = u.username.toLowerCase();
+        if (!seenNames.has(lower)) {
+          seenNames.add(lower);
+          const prof = userProfiles.get(lower);
+
+          // Determine authoritative presence status:
+          // 1. in-match: user is in a room that is active or waiting
+          // 2. idle: explicit status === 'idle' or inactive > 2 minutes (120,000ms)
+          // 3. online: connected, active, available for direct challenge
+          let computedStatus: 'online' | 'in-match' | 'idle' = 'online';
+          if (u.roomId && rooms.has(u.roomId)) {
+            const activeRoom = rooms.get(u.roomId);
+            if (activeRoom && (activeRoom.status === 'active' || activeRoom.status === 'waiting')) {
+              computedStatus = 'in-match';
+            }
+          }
+
+          if (computedStatus !== 'in-match') {
+            if (u.status === 'idle' || (now - (u.lastSeen || now)) > 120000) {
+              computedStatus = 'idle';
+            } else {
+              computedStatus = 'online';
+            }
+          }
+
+          list.push({
+            socketId: u.socketId,
+            username: u.username,
+            elo: u.elo || prof?.elo || 1200,
+            status: computedStatus,
+            lastSeen: u.lastSeen,
+            isBot: false,
+          });
+        }
+      }
+    }
+
+    // Default sparring opponents with diverse presence states so lobby is always populated with available, in-match, and idle contenders
+    const defaultDuelists: Array<{
+      socketId: string;
+      username: string;
+      elo: number;
+      status: 'online' | 'in-match' | 'idle';
+      lastSeen: number;
+      isBot: boolean;
+    }> = [
+      { socketId: 'bot-cyber-ronin', username: 'CyberRonin', elo: 2100, status: 'online', lastSeen: Date.now(), isBot: true },
+      { socketId: 'bot-algoarena-bot', username: 'AlgoArena Bot [Mentor]', elo: 2400, status: 'online', lastSeen: Date.now(), isBot: true },
+      { socketId: 'bot-quantum-coder', username: 'QuantumCoder', elo: 1950, status: 'in-match', lastSeen: Date.now(), isBot: true },
+      { socketId: 'bot-byte-hacker', username: 'ByteHacker', elo: 1420, status: 'idle', lastSeen: Date.now() - 300000, isBot: true },
+    ];
+
+    for (const d of defaultDuelists) {
+      if (!seenNames.has(d.username.toLowerCase())) {
+        list.push(d);
+      }
+    }
+
+    return list;
+  }
+
   function broadcastOnlineUsers() {
     const onlineUsernames = getOnlineUsernamesList();
     const activeCount = Math.max(1, activeSocketUsers.size);
@@ -1730,7 +1840,58 @@ async function startServer() {
       onlineUsernames,
       activeCount,
     });
+    io.emit('lobby_operators_update', {
+      operators: getLobbyOperatorsList(),
+    });
   }
+
+  // Global Lobby Chat in-memory authoritative storage
+  interface LobbyChatMessage {
+    id: string;
+    userId: string;
+    username: string;
+    text: string;
+    timestamp: number;
+    elo?: number;
+    avatar?: string;
+    badge?: string;
+    isSystem?: boolean;
+  }
+
+  const lobbyChatMessages: LobbyChatMessage[] = [
+    {
+      id: 'lmsg-seed-1',
+      userId: 'system',
+      username: 'System // AlgoArena Kernel',
+      text: 'Global lobby subnet online. Chat with active duelists, initiate 1v1 scrims, or exchange algorithm insights.',
+      timestamp: Date.now() - 3600000,
+      isSystem: true,
+    },
+    {
+      id: 'lmsg-seed-2',
+      userId: 'seed-ronin',
+      username: 'CyberRonin_99',
+      text: 'Looking for a Hard-tier graph or dynamic programming sparring partner. Send a direct challenge if ready!',
+      timestamp: Date.now() - 1800000,
+      elo: 2150,
+    },
+    {
+      id: 'lmsg-seed-3',
+      userId: 'seed-queen',
+      username: 'NullPointerQueen',
+      text: 'GL HF to everyone on ladder today! Remember to check bounds on empty array test cases.',
+      timestamp: Date.now() - 900000,
+      elo: 1880,
+    },
+    {
+      id: 'lmsg-seed-4',
+      userId: 'seed-bit',
+      username: 'BitFlipper_42',
+      text: 'Just solved Maximum Non-Adjacent Energy in TypeScript under 4 minutes. Feels good.',
+      timestamp: Date.now() - 300000,
+      elo: 1620,
+    },
+  ];
 
   // API Routes
   app.get('/api/health', (req, res) => {
@@ -1742,6 +1903,22 @@ async function startServer() {
     res.json({
       onlineUsernames: getOnlineUsernamesList(),
       activeCount: Math.max(1, activeSocketUsers.size),
+    });
+  });
+
+  // Active lobby operators for direct dueling challenges
+  app.get('/api/lobby-operators', (req, res) => {
+    res.json({
+      operators: getLobbyOperatorsList(),
+      activeCount: Math.max(1, activeSocketUsers.size),
+    });
+  });
+
+  // Global persistent lobby chat messages endpoint
+  app.get('/api/lobby-chat', (req, res) => {
+    res.json({
+      messages: lobbyChatMessages.slice(-100),
+      onlineCount: Math.max(1, activeSocketUsers.size),
     });
   });
 
@@ -2012,6 +2189,7 @@ async function startServer() {
         nationality: profileData.nationality || existing.nationality,
         region: profileData.region || existing.region,
         photoURL: profileData.photoURL || existing.photoURL,
+        neonPalette: profileData.neonPalette || existing.neonPalette || 'matrix-green',
         uid: profileData.uid || existing.uid,
       };
 
@@ -2209,6 +2387,188 @@ Generate:
     }
   });
 
+  // AI Helper Fallback Generator
+  function generateFallbackAIHelp(
+    problem: { title: string; description: string; difficulty: string; constraints?: string[] },
+    type: 'hint' | 'strategy' | 'custom',
+    customQuestion?: string
+  ): string {
+    const title = (problem.title || '').toLowerCase();
+    const desc = (problem.description || '').toLowerCase();
+
+    if (type === 'hint') {
+      if (title.includes('energy') || title.includes('adjacent') || title.includes('house') || desc.includes('adjacent') || desc.includes('subsequence')) {
+        return '💡 **Recurrence Invariant**: At each index `i`, decide between skipping element `i` (taking `dp[i-1]`) or taking element `i` along with `dp[i-2]`. Store only the two previous states to achieve O(1) auxiliary space.';
+      }
+      if (title.includes('tree') || title.includes('invert') || desc.includes('root') || desc.includes('binary tree')) {
+        return '💡 **Tree Traversal Invariant**: Recursively swap the left and right child pointers at the current node. Ensure your base case terminates when `root == null`, returning null.';
+      }
+      if (title.includes('island') || title.includes('grid') || desc.includes('grid') || desc.includes('matrix') || desc.includes('water')) {
+        return '💡 **Connected Components**: When encountering land `1`, trigger a BFS or DFS to sink all connected land cells to `0` so they are never revisited. Time complexity will be linear in terms of total grid cells O(M × N).';
+      }
+      if (title.includes('window') || title.includes('substring') || desc.includes('substring') || desc.includes('contiguous')) {
+        return '💡 **Two-Pointer Window**: Expand the right pointer while tracking frequency in a hash map. Once the condition is violated, contract the left pointer until validity is restored.';
+      }
+      if (title.includes('sum') || title.includes('target') || desc.includes('target') || desc.includes('pair')) {
+        return '💡 **Complement Lookup**: Instead of nested loops O(N²), store elements in a hash map. For each number, check if `target - num` already exists in O(1) average lookup time.';
+      }
+      return '💡 **Algorithmic Insight**: Analyze the constraints. Look for monotonic properties or sorted order that enable two-pointers or binary search, or consider whether a hash table can reduce lookup overhead to O(1).';
+    }
+
+    if (type === 'strategy') {
+      let approach = 'Hash Map / Two-Pointer Traversal';
+      let timeComp = 'O(N)';
+      let spaceComp = 'O(N) or O(1)';
+      let intuition = 'Decompose the problem by mapping complementary states or maintaining invariant pointers across the collection.';
+      let steps = [
+        'Initialize appropriate auxiliary tracking data structure (frequency map, two pointers, or memo table).',
+        'Iterate through the collection while maintaining the invariant condition.',
+        'Update global tracking metrics (e.g. max profit, minimum window length, total connected components).',
+        'Return the accumulated result once the iteration completes.',
+      ];
+
+      if (title.includes('island') || title.includes('grid')) {
+        approach = 'Breadth-First Search (BFS) / Depth-First Search (DFS) Grid Sinking';
+        timeComp = 'O(M × N)';
+        spaceComp = 'O(min(M, N))';
+        intuition = 'Treat the 2D grid as an unweighted graph where cells with land value represent connected components.';
+        steps = [
+          'Scan each cell (r, c) in the M × N matrix.',
+          'When an unvisited land cell is found, increment the island counter.',
+          'Execute BFS/DFS queue traversal visiting all 4 orthogonal neighbors (up, down, left, right), marking visited cells as water to prevent duplicate processing.',
+          'Return the total component counter.',
+        ];
+      } else if (title.includes('energy') || title.includes('adjacent') || desc.includes('adjacent')) {
+        approach = 'Dynamic Programming with State Compression';
+        timeComp = 'O(N)';
+        spaceComp = 'O(1)';
+        intuition = 'Optimal substructure: the maximum outcome at index i depends strictly on whether we include index i (requiring i-2) or exclude index i (carrying i-1).';
+        steps = [
+          'Handle base cases: 0 elements yields 0, 1 element yields its own value.',
+          'Initialize two scalar variables: prev2 = 0, prev1 = arr[0].',
+          'Iterate from index 1 to N-1: current = max(prev1, prev2 + arr[i]), then shift: prev2 = prev1, prev1 = current.',
+          'Return prev1 as the optimal global solution in constant memory.',
+        ];
+      } else if (title.includes('tree')) {
+        approach = 'Divide-and-Conquer Postorder Recursion';
+        timeComp = 'O(N)';
+        spaceComp = 'O(H) where H is tree height';
+        intuition = 'Each subtree can be solved independently. Inverting the left and right subtrees and swapping their attachments solves the global tree.';
+        steps = [
+          'Base case: if current node is null, return null.',
+          'Recursively solve leftSubtree = invertTree(root.left).',
+          'Recursively solve rightSubtree = invertTree(root.right).',
+          'Swap pointers: root.left = rightSubtree, root.right = leftSubtree, then return root.',
+        ];
+      }
+
+      return `### 🧭 Algorithm Strategy Blueprint: ${problem.title}
+
+**1. Core Intuition & Approach:**
+${intuition}
+- **Strategy Archetype:** \`${approach}\`
+- **Target Complexity:** Time: \`${timeComp}\` | Space: \`${spaceComp}\`
+
+**2. Implementation Roadmap:**
+${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+**3. Edge Cases & Safeguards:**
+- Empty or boundary collection checks (e.g. length = 0 or 1).
+- Out-of-bounds index safeguards during neighbor transitions.
+- Off-by-one errors on window contraction or array termination.`;
+    }
+
+    // Custom query
+    return `### 💡 DSA Mentor Advisory
+Regarding your query: *"${customQuestion || 'Optimization guidance'}"*
+
+Analyze whether your current approach repeats redundant computations. If you find yourself checking elements multiple times, cache subproblem results in a hash table or dynamic programming array. Verify edge cases where inputs have length 0, 1, or maximum boundary values according to the constraints.`;
+  }
+
+  // AI Helper endpoint for hints, algorithm strategies, and custom queries
+  app.post('/api/ai-helper', async (req, res) => {
+    try {
+      const { problem, code, language, type, customQuestion } = req.body;
+      if (!problem || !problem.title) {
+        return res.status(400).json({ success: false, error: 'Problem details required.' });
+      }
+
+      const helperType = type === 'strategy' ? 'strategy' : type === 'custom' ? 'custom' : 'hint';
+      const cost = helperType === 'strategy' ? 100 : 50;
+
+      let systemPrompt = '';
+      if (helperType === 'hint') {
+        systemPrompt = `You are "AlgoArena Cybernetic DSA Mentor", an elite competitive programming guide.
+The operator is currently in an active code duel and requested an ALGORITHMIC HINT.
+
+Problem: ${problem.title} (${problem.difficulty})
+Description: ${problem.description}
+Constraints: ${JSON.stringify(problem.constraints || [])}
+Operator's Current Language: ${language || 'TypeScript'}
+Current Code Draft:
+\`\`\`${language || 'typescript'}
+${code ? code.slice(0, 800) : '// No code yet'}
+\`\`\`
+
+TASK:
+1. Provide a sharp, concise 2-3 sentence algorithmic hint.
+2. Focus on: key invariant, data structure recommendation (e.g. hash map, monotonic stack, priority queue), recurrence pattern, or corner case.
+3. DO NOT output the full solution code. Keep the challenge intact!
+4. Tone: Cyberpunk mentor, direct and encouraging.`;
+      } else if (helperType === 'strategy') {
+        systemPrompt = `You are "AlgoArena Cybernetic DSA Mentor", an elite competitive programming guide.
+The operator requested an ALGORITHM STRATEGY BLUEPRINT for this problem.
+
+Problem: ${problem.title} (${problem.difficulty})
+Description: ${problem.description}
+Constraints: ${JSON.stringify(problem.constraints || [])}
+Operator's Current Language: ${language || 'TypeScript'}
+
+TASK: Provide an algorithm strategy roadmap:
+1. Core Algorithmic Intuition (1-2 sentences on what mathematical or spatial property enables an optimal solution)
+2. Target Complexity (Time e.g. O(N) or O(N log N), Space e.g. O(1) or O(N))
+3. Step-by-Step Tactical Steps (3-4 concise numbered steps explaining the algorithm flow)
+4. Key Edge Cases to Guard Against (e.g. empty arrays, single elements, negative numbers)
+DO NOT provide the full runnable code solution.
+Tone: Cyberpunk competitive coach.`;
+      } else {
+        systemPrompt = `You are "AlgoArena Cybernetic DSA Mentor".
+The operator has a specific question regarding their code for problem "${problem.title}":
+Question: "${customQuestion || 'How do I optimize this?'}"
+
+Current Code:
+\`\`\`${language || 'typescript'}
+${code ? code.slice(0, 800) : '// empty'}
+\`\`\`
+
+TASK: Answer their conceptual question in 2-3 concise sentences with actionable insight. No full code dumps.`;
+      }
+
+      let content = '';
+      try {
+        content = await generateContentWithFallback({ contents: systemPrompt });
+      } catch (apiErr) {
+        console.warn('Gemini API call failed, generating domain fallback hint:', apiErr);
+        content = generateFallbackAIHelp(problem, helperType, customQuestion);
+      }
+
+      if (!content || !content.trim()) {
+        content = generateFallbackAIHelp(problem, helperType, customQuestion);
+      }
+
+      res.json({
+        success: true,
+        type: helperType,
+        content: content.trim(),
+        cost,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      console.error('AI Helper error:', err);
+      res.status(500).json({ success: false, error: err.message || 'AI Helper unavailable' });
+    }
+  });
+
   function buildMatchOverCodePayload(room: any) {
     const codeByUserId: Record<string, { code: string; language: string; name: string }> = {};
     if (!room || !room.users) return codeByUserId;
@@ -2254,17 +2614,327 @@ Generate:
     });
 
     // Real-time user presence registration
-    socket.on('user_presence', ({ username }: { username: string }) => {
+    socket.on('user_presence', ({ username, status }: { username: string; status?: 'online' | 'in-match' | 'idle' }) => {
       if (username && username.trim()) {
         const cleanName = username.trim();
         const existing = activeSocketUsers.get(socket.id);
+        const profile = userProfiles.get(cleanName.toLowerCase());
+        const presenceStatus = status || (existing?.roomId ? 'in-match' : 'online');
         activeSocketUsers.set(socket.id, {
           socketId: socket.id,
           username: cleanName,
+          elo: profile?.elo || 1200,
+          avatar: profile?.photoURL,
           lastSeen: Date.now(),
           roomId: existing?.roomId,
+          status: presenceStatus,
         });
         broadcastOnlineUsers();
+      }
+    });
+
+    // Explicit user registration with full ELO & profile info
+    socket.on('register_user', ({ username, elo, avatar, status }: { username: string; elo?: number; avatar?: string; status?: 'online' | 'in-match' | 'idle' }) => {
+      if (username && username.trim()) {
+        const cleanName = username.trim();
+        const existing = activeSocketUsers.get(socket.id);
+        const profile = userProfiles.get(cleanName.toLowerCase());
+        const presenceStatus = status || (existing?.roomId ? 'in-match' : 'online');
+        activeSocketUsers.set(socket.id, {
+          socketId: socket.id,
+          username: cleanName,
+          elo: elo || profile?.elo || 1200,
+          avatar: avatar || profile?.photoURL,
+          lastSeen: Date.now(),
+          roomId: existing?.roomId,
+          status: presenceStatus,
+        });
+        broadcastOnlineUsers();
+      }
+    });
+
+    // Explicit presence status update (online, in-match, idle)
+    socket.on('set_presence', ({ status }: { status: 'online' | 'in-match' | 'idle' }) => {
+      const existing = activeSocketUsers.get(socket.id);
+      if (existing) {
+        existing.status = status;
+        existing.lastSeen = Date.now();
+        broadcastOnlineUsers();
+      }
+    });
+
+    // Real-Time Global Lobby Chat
+    // Emit initial chat history immediately to newly connected client
+    socket.emit('lobby_chat_history', {
+      messages: lobbyChatMessages.slice(-100),
+      onlineCount: Math.max(1, activeSocketUsers.size),
+    });
+
+    // Handle client request for history refresh or reconnect sync
+    socket.on('get_lobby_chat_history', (callback) => {
+      const payload = {
+        messages: lobbyChatMessages.slice(-100),
+        onlineCount: Math.max(1, activeSocketUsers.size),
+      };
+      socket.emit('lobby_chat_history', payload);
+      if (typeof callback === 'function') {
+        callback(payload);
+      }
+    });
+
+    // Handle incoming lobby message and broadcast to all connected operators
+    socket.on('send_lobby_chat', ({ text, username, elo, avatar }: { text: string; username?: string; elo?: number; avatar?: string }) => {
+      if (!text || typeof text !== 'string') return;
+      const cleanText = text.trim();
+      if (!cleanText || cleanText.length > 500) return;
+
+      const sender = activeSocketUsers.get(socket.id);
+      const cleanName = (username || sender?.username || 'Anonymous Duelist').trim();
+      const userProfile = userProfiles.get(cleanName.toLowerCase());
+      const cleanElo = elo || sender?.elo || userProfile?.elo || 1200;
+      const cleanAvatar = avatar || sender?.avatar || userProfile?.photoURL;
+
+      const newMsg: LobbyChatMessage = {
+        id: `lmsg-${Date.now()}-${uuidv4().slice(0, 6)}`,
+        userId: socket.id,
+        username: cleanName,
+        text: cleanText,
+        timestamp: Date.now(),
+        elo: cleanElo,
+        avatar: cleanAvatar,
+        isSystem: false,
+      };
+
+      lobbyChatMessages.push(newMsg);
+      if (lobbyChatMessages.length > 200) {
+        lobbyChatMessages.splice(0, lobbyChatMessages.length - 200);
+      }
+
+      // Authoritative broadcast to all connected sockets
+      io.emit('lobby_chat_message', newMsg);
+    });
+
+    // Real-Time Direct Challenge Flow
+    socket.on('send_direct_challenge', ({ targetUsername, targetSocketId, difficulty, topic }) => {
+      const sender = activeSocketUsers.get(socket.id);
+      const senderName = sender?.username || 'Anonymous Duelist';
+      const senderElo = sender?.elo || (userProfiles.get(senderName.toLowerCase())?.elo || 1200);
+
+      if (!targetUsername && !targetSocketId) {
+        socket.emit('direct_challenge_error', { message: 'Target duelist name or socket ID is required.' });
+        return;
+      }
+
+      // Check if target is a bot or simulated sparring duelist
+      const targetName = (targetUsername || '').trim();
+      const isBotTarget = targetName.toLowerCase().includes('bot') ||
+        targetName.toLowerCase().includes('ronin') ||
+        targetName.toLowerCase().includes('cyberronin') ||
+        targetName.toLowerCase().includes('quantumcoder') ||
+        targetName.toLowerCase().includes('bytehacker');
+
+      const challengeId = `chal-${uuidv4().slice(0, 8)}`;
+      const roomId = `duel-${uuidv4().slice(0, 6)}`;
+      const cleanDiff = difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase())
+        ? String(difficulty).toLowerCase()
+        : 'medium';
+      const cleanTopic = topic || 'Algorithms & Data Structures';
+
+      if (isBotTarget) {
+        // Immediate acknowledgment
+        socket.emit('direct_challenge_sent_success', {
+          challengeId,
+          targetUsername: targetName,
+          expiresAt: Date.now() + 30000,
+          isBot: true,
+        });
+
+        // Automatic acceptance from the bot after realistic simulated transmission delay
+        setTimeout(() => {
+          const botElo = targetName.toLowerCase().includes('ronin') ? 2100 : targetName.toLowerCase().includes('quantum') ? 1950 : 2400;
+          if (!rooms.has(roomId)) {
+            rooms.set(roomId, {
+              id: roomId,
+              users: {},
+              status: 'waiting',
+              problem: null,
+              startTime: null,
+              difficulty: cleanDiff,
+              topic: cleanTopic,
+              mode: 'duel',
+              isDirectDuel: true,
+            });
+          }
+
+          socket.emit('direct_challenge_start', {
+            roomId,
+            opponentName: targetName,
+            opponentElo: botElo,
+            difficulty: cleanDiff,
+            topic: cleanTopic,
+          });
+        }, 1800);
+        return;
+      }
+
+      // Locate target human user
+      let targetUser: ActiveSocketUser | undefined;
+      if (targetSocketId && activeSocketUsers.has(targetSocketId)) {
+        targetUser = activeSocketUsers.get(targetSocketId);
+      } else {
+        const targetLower = targetName.toLowerCase();
+        for (const u of activeSocketUsers.values()) {
+          if (u.username && u.username.toLowerCase() === targetLower && u.socketId !== socket.id) {
+            targetUser = u;
+            break;
+          }
+        }
+      }
+
+      if (!targetUser) {
+        socket.emit('direct_challenge_error', {
+          message: `Operator "${targetName}" is not active in the lobby right now.`,
+        });
+        return;
+      }
+
+      if (targetUser.socketId === socket.id) {
+        socket.emit('direct_challenge_error', {
+          message: 'Cannot challenge your own active terminal session.',
+        });
+        return;
+      }
+
+      const challenge: DirectChallengeSession = {
+        challengeId,
+        roomId,
+        senderSocketId: socket.id,
+        senderUsername: senderName,
+        senderElo,
+        targetUsername: targetUser.username,
+        targetSocketId: targetUser.socketId,
+        difficulty: cleanDiff as any,
+        topic: cleanTopic,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 30000,
+      };
+
+      // Expiration timer (30 seconds)
+      challenge.timeoutHandle = setTimeout(() => {
+        if (activeChallenges.has(challengeId)) {
+          activeChallenges.delete(challengeId);
+          io.to(challenge.senderSocketId).emit('direct_challenge_expired', {
+            challengeId,
+            targetUsername: challenge.targetUsername,
+          });
+          if (challenge.targetSocketId) {
+            io.to(challenge.targetSocketId).emit('direct_challenge_expired', {
+              challengeId,
+            });
+          }
+        }
+      }, 30000);
+
+      activeChallenges.set(challengeId, challenge);
+
+      // Transmit popup notification to target operator
+      io.to(targetUser.socketId).emit('direct_challenge_received', {
+        challengeId,
+        roomId,
+        senderSocketId: socket.id,
+        senderUsername: senderName,
+        senderElo,
+        difficulty: cleanDiff,
+        topic: cleanTopic,
+        expiresAt: challenge.expiresAt,
+      });
+
+      // Acknowledge to challenger
+      socket.emit('direct_challenge_sent_success', {
+        challengeId,
+        targetUsername: targetUser.username,
+        targetSocketId: targetUser.socketId,
+        expiresAt: challenge.expiresAt,
+      });
+    });
+
+    // Target accepts the challenge
+    socket.on('accept_direct_challenge', ({ challengeId }) => {
+      const challenge = activeChallenges.get(challengeId);
+      if (!challenge) {
+        socket.emit('direct_challenge_error', { message: 'Duel invitation has expired or was withdrawn.' });
+        return;
+      }
+
+      if (challenge.timeoutHandle) {
+        clearTimeout(challenge.timeoutHandle);
+      }
+      activeChallenges.delete(challengeId);
+
+      // Pre-initialize duel room
+      if (!rooms.has(challenge.roomId)) {
+        rooms.set(challenge.roomId, {
+          id: challenge.roomId,
+          users: {},
+          status: 'waiting',
+          problem: null,
+          startTime: null,
+          difficulty: challenge.difficulty,
+          topic: challenge.topic,
+          mode: 'duel',
+          isDirectDuel: true,
+        });
+      }
+
+      // Transmit start signal to both participants
+      io.to(challenge.senderSocketId).emit('direct_challenge_start', {
+        roomId: challenge.roomId,
+        opponentName: challenge.targetUsername,
+        opponentElo: challenge.senderElo,
+        difficulty: challenge.difficulty,
+        topic: challenge.topic,
+      });
+
+      io.to(socket.id).emit('direct_challenge_start', {
+        roomId: challenge.roomId,
+        opponentName: challenge.senderUsername,
+        opponentElo: challenge.senderElo,
+        difficulty: challenge.difficulty,
+        topic: challenge.topic,
+      });
+    });
+
+    // Target declines the challenge
+    socket.on('decline_direct_challenge', ({ challengeId, reason }) => {
+      const challenge = activeChallenges.get(challengeId);
+      if (!challenge) return;
+
+      if (challenge.timeoutHandle) {
+        clearTimeout(challenge.timeoutHandle);
+      }
+      activeChallenges.delete(challengeId);
+
+      io.to(challenge.senderSocketId).emit('direct_challenge_declined', {
+        challengeId,
+        targetUsername: challenge.targetUsername,
+        reason: reason || 'declined',
+      });
+    });
+
+    // Challenger cancels invitation before response
+    socket.on('cancel_direct_challenge', ({ challengeId }) => {
+      const challenge = activeChallenges.get(challengeId);
+      if (!challenge) return;
+
+      if (challenge.timeoutHandle) {
+        clearTimeout(challenge.timeoutHandle);
+      }
+      activeChallenges.delete(challengeId);
+
+      if (challenge.targetSocketId) {
+        io.to(challenge.targetSocketId).emit('direct_challenge_cancelled', {
+          challengeId,
+        });
       }
     });
 
@@ -2281,14 +2951,32 @@ Generate:
     socket.on('join_room', ({ roomId, user, mode, topic, difficulty }) => {
       socket.join(roomId);
       if (user?.name) {
+        const existing = activeSocketUsers.get(socket.id);
+        const profile = userProfiles.get(user.name.toLowerCase());
         activeSocketUsers.set(socket.id, {
           socketId: socket.id,
           username: user.name,
+          elo: user.elo || existing?.elo || profile?.elo || 1200,
+          avatar: user.avatar || existing?.avatar || profile?.photoURL,
           lastSeen: Date.now(),
           roomId,
+          status: 'in-match',
         });
         broadcastOnlineUsers();
       }
+
+    socket.on('leave_room', ({ roomId }: { roomId?: string } = {}) => {
+      if (roomId) {
+        socket.leave(roomId);
+      }
+      const existing = activeSocketUsers.get(socket.id);
+      if (existing) {
+        existing.roomId = undefined;
+        existing.status = 'online';
+        existing.lastSeen = Date.now();
+        broadcastOnlineUsers();
+      }
+    });
 
       const cleanDiff = (difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase()))
         ? String(difficulty).toLowerCase()
@@ -2322,6 +3010,42 @@ Generate:
 
       io.to(roomId).emit('room_state_update', room);
       socket.to(roomId).emit('chat_message', { system: true, text: `${user.name} entered arena grid.` });
+    });
+
+    // Real-time In-Arena Live Chat between matched duelists
+    socket.on('send_chat', ({ roomId, text }) => {
+      const room = rooms.get(roomId);
+      if (!room || !text || typeof text !== 'string' || !text.trim()) return;
+      const user = room.users[socket.id];
+      const senderName = user?.name || activeSocketUsers.get(socket.id)?.username || 'Operator';
+      const cleanText = text.trim().slice(0, 500);
+
+      io.to(roomId).emit('chat_message', {
+        user: senderName,
+        text: cleanText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+
+      // If sparring against an AI bot, bot can acknowledge or provide tactical advice
+      const botUser = Object.values(room.users).find((u: any) => u.isAi || u.isBot) as any;
+      if (botUser && room.status === 'active' && Math.random() > 0.45) {
+        setTimeout(() => {
+          const currentRoom = rooms.get(roomId);
+          if (!currentRoom || currentRoom.status !== 'active') return;
+          const botReplies = [
+            "Analyzing edge cases. Remember to guard against empty collections and boundary constraints.",
+            "Acknowledged. Focus on your inner loop time complexity to avoid TLE on hidden tests.",
+            "Solid progress. Let's see whose solution passes the test suite first!",
+            "Tactical hint: check if sorting or a complementary hash map simplifies your lookup.",
+          ];
+          const reply = botReplies[Math.floor(Math.random() * botReplies.length)];
+          io.to(roomId).emit('chat_message', {
+            user: botUser.name || 'AlgoArena Bot',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }, 1100);
+      }
     });
 
     // Add Gemini AI Bot or AlgoArena Bot to the Room
@@ -2592,11 +3316,25 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       room.users[socket.id].submittedReview = review;
     });
 
-    socket.on('forfeit_match', ({ roomId }) => {
+    socket.on('player_afk_warning', ({ roomId, isWarning, remainingSecs }) => {
+      const room = rooms.get(roomId);
+      if (!room || room.status !== 'active') return;
+      const user = room.users[socket.id];
+      socket.to(roomId).emit('opponent_afk_warning', {
+        userId: socket.id,
+        username: user?.name || 'Opponent',
+        isWarning,
+        remainingSecs: remainingSecs ?? 30,
+      });
+    });
+
+    socket.on('forfeit_match', ({ roomId, reason }: { roomId: string; reason?: string }) => {
       const room = rooms.get(roomId);
       const forfeitingUser = room?.users[socket.id] as any;
       if (!room || !forfeitingUser || room.status !== 'active') return;
 
+      const isAfkIdle = reason === 'afk_idle';
+      const endReason = isAfkIdle ? 'afk_idle' : 'forfeit';
       const opponent = Object.values(room.users).find((user: any) => user.id !== socket.id) as any;
       room.status = 'finished';
       room.winner = opponent?.id;
@@ -2610,14 +3348,16 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
           forfeitingUser.submittedCode || '',
           forfeitingUser.submittedLanguage || 'TypeScript',
           room.problem,
-          'Match forfeited before submission. Review the expected solution to study the intended approach.',
+          isAfkIdle
+            ? 'Match auto-forfeited due to prolonged terminal inactivity (Fair Play Enforcement).'
+            : 'Match forfeited before submission. Review the expected solution to study the intended approach.',
         );
         updateProfileWithMatch(forfeitingUser.name, {
           opponent: opponent.name,
           outcome: 'Defeat',
           problem: room.problem?.title || 'Competitive Challenge',
           difficulty: (room.problem?.difficulty || 'Medium') as any,
-          duration: 'Forfeited',
+          duration: isAfkIdle ? 'Auto-Forfeit (AFK)' : 'Forfeited',
           language: forfeitingUser.submittedLanguage || 'TypeScript',
           passedCount: 0,
           totalTests: 1,
@@ -2630,7 +3370,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
             outcome: 'Victory',
             problem: room.problem?.title || 'Competitive Challenge',
             difficulty: (room.problem?.difficulty || 'Medium') as any,
-            duration: 'Forfeited',
+            duration: isAfkIdle ? 'Won (Opponent AFK)' : 'Forfeited',
             language: opponent.submittedLanguage || 'TypeScript',
             passedCount: opponent.progress >= 100 ? 5 : 0,
             totalTests: 5,
@@ -2640,7 +3380,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
         }
         io.to(roomId).emit('match_over', {
           winner: opponent,
-          reason: 'forfeit',
+          reason: endReason,
           forfeitedBy: forfeitingUser.name,
           reviewByUserId: { [forfeitingUser.id]: forfeitedReview },
           codeByUserId: buildMatchOverCodePayload(room),
@@ -2648,11 +3388,16 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       } else {
         io.to(roomId).emit('match_over', { 
           winner: opponent, 
-          reason: 'forfeit', 
+          reason: endReason, 
           forfeitedBy: forfeitingUser.name,
           codeByUserId: buildMatchOverCodePayload(room),
         });
       }
+
+      const systemMsg = isAfkIdle
+        ? `FAIR PLAY ENFORCEMENT // ${forfeitingUser.name} went idle for too long and was auto-forfeited. ${opponent?.name || 'Opponent'} is awarded the victory.`
+        : `MATCH TERMINATED // ${forfeitingUser.name} forfeited the duel.`;
+      io.to(roomId).emit('chat_message', { system: true, text: systemMsg });
 
       io.to(roomId).emit('room_state_update', room);
     });
@@ -2674,7 +3419,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       if (Object.keys(room.users).length === 0) rooms.delete(roomId);
     });
 
-    socket.on('match_won', ({ roomId, problemTitle, difficulty, language, duration, passedCount, totalTests, code, playback, review }) => {
+    socket.on('match_won', ({ roomId, problemTitle, difficulty, language, duration, passedCount, totalTests, code, playback, review, hintsUsed, hintCostPenalty, baseScore, finalScore }) => {
       const room = rooms.get(roomId);
       if (!room || room.status !== 'active' || !room.users[socket.id]) return;
 
@@ -2693,6 +3438,8 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       const opponentName = opponentUser?.name || 'AlgoArena Sparring Bot';
       const winnerCode = code || winnerUser.submittedCode;
       const winnerLanguage = language || winnerUser.submittedLanguage || 'TypeScript';
+      winnerUser.submittedCode = winnerCode;
+      winnerUser.submittedLanguage = winnerLanguage;
       const winnerReview = review || winnerUser.submittedReview || buildFallbackReview(
         winnerCode || '',
         winnerLanguage,
@@ -2720,7 +3467,11 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
         code: winnerCode,
         playback,
         review: winnerReview,
-      });
+        hintsUsed: hintsUsed || 0,
+        hintCostPenalty: hintCostPenalty || 0,
+        baseScore,
+        finalScore,
+      } as any);
 
       // If opponent was a real connected human user, record their defeat
       if (opponentUser && !opponentUser.isBot) {
@@ -2817,6 +3568,25 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
           }
         }
       });
+      // Clean up any pending direct challenges involving this socket
+      for (const [cId, ch] of activeChallenges.entries()) {
+        if (ch.senderSocketId === socket.id) {
+          if (ch.timeoutHandle) clearTimeout(ch.timeoutHandle);
+          activeChallenges.delete(cId);
+          if (ch.targetSocketId) {
+            io.to(ch.targetSocketId).emit('direct_challenge_cancelled', { challengeId: cId });
+          }
+        } else if (ch.targetSocketId === socket.id) {
+          if (ch.timeoutHandle) clearTimeout(ch.timeoutHandle);
+          activeChallenges.delete(cId);
+          io.to(ch.senderSocketId).emit('direct_challenge_declined', {
+            challengeId: cId,
+            targetUsername: ch.targetUsername,
+            reason: 'disconnected',
+          });
+        }
+      }
+
       activeSocketUsers.delete(socket.id);
       broadcastOnlineUsers();
       console.log('Client disconnected:', socket.id);

@@ -29,6 +29,8 @@ import { MatchHistory } from '../components/MatchHistory';
 import { CodePlayback } from '../components/CodePlayback';
 import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
+import { NeonPalettePicker } from '../components/NeonPalettePicker';
+import { useNeonTheme, NEON_PALETTES } from '../lib/neonThemes';
 import { useStore } from '../store';
 import { UserProfileData, MatchRecord } from '../types';
 import { getLocalMatches, getSampleBenchmarkMatches, recordCompletedMatch } from '../lib/matchHistoryStorage';
@@ -38,6 +40,7 @@ export function Profile() {
   const { username } = useParams<{ username: string }>();
   const navigate = useNavigate();
   const { accountProfile, setProfileSetupOpen, saveProfileAndSync, currentUser } = useStore();
+  const { palette: neonTheme, setPalette: setNeonTheme } = useNeonTheme();
 
   const operatorName = username || accountProfile?.username || currentUser.name || 'Operator';
   const isSelf = Boolean(
@@ -273,25 +276,35 @@ export function Profile() {
   const currentRegion = profile.region || accountProfile?.region || 'Global Matrix';
   const currentFullName = profile.name || accountProfile?.name || profile.username;
 
+  const profilePalette = !isSelf && profile.neonPalette
+    ? (NEON_PALETTES.find(p => p.id === profile.neonPalette) || neonTheme)
+    : neonTheme;
+
   return (
-    <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans flex flex-col justify-between selection:bg-[#00FF00]/30">
+    <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans flex flex-col justify-between selection:bg-white/20">
       {/* Top Navbar */}
-      <nav className="h-14 border-b border-[#00FF00]/30 flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0 font-mono">
+      <nav 
+        className="h-14 border-b flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0 font-mono transition-colors"
+        style={{ borderColor: `rgba(${profilePalette.rgb}, 0.3)` }}
+      >
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate('/')} 
-            className="text-zinc-400 hover:text-[#00FF00] transition-colors flex items-center gap-2 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            className="text-zinc-400 hover:text-white transition-colors flex items-center gap-2 text-xs font-bold uppercase tracking-wider cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" /> <span>ARENA</span>
           </button>
           <button 
             onClick={() => navigate('/leaderboard')} 
-            className="text-zinc-400 hover:text-[#00FF00] transition-colors flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            className="text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
           >
-            <Trophy className="w-3.5 h-3.5 text-[#00FF00]" /> <span>LEADERBOARD</span>
+            <Trophy className="w-3.5 h-3.5" style={{ color: profilePalette.hex }} /> <span>LEADERBOARD</span>
           </button>
           <span className="text-zinc-600">|</span>
-          <span className="text-[#00FF00] font-black text-lg tracking-tighter uppercase">
+          <span 
+            className="font-black text-lg tracking-tighter uppercase transition-colors"
+            style={{ color: profilePalette.hex }}
+          >
             ALGOARENA // OPERATOR DOSSIER
           </span>
         </div>
@@ -300,9 +313,12 @@ export function Profile() {
           {isSelf && (
             <button
               onClick={() => setProfileSetupOpen(true)}
-              className="px-3 py-1.5 bg-white/5 border border-white/20 text-zinc-300 hover:text-white hover:border-[#00FF00] text-xs font-bold uppercase flex items-center gap-1.5 transition-all"
+              className="px-3 py-1.5 bg-white/5 border border-white/20 text-zinc-300 hover:text-white text-xs font-bold uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+              style={{
+                borderColor: `rgba(${profilePalette.rgb}, 0.3)`,
+              }}
             >
-              <Edit3 className="w-3.5 h-3.5 text-[#00FF00]" />
+              <Edit3 className="w-3.5 h-3.5" style={{ color: profilePalette.hex }} />
               <span>EDIT PROFILE</span>
             </button>
           )}
@@ -313,7 +329,13 @@ export function Profile() {
 
           <button
             onClick={() => navigate('/room/arena-quick')}
-            className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#00FF00]/10 border border-[#00FF00]/40 text-[#00FF00] hover:bg-[#00FF00]/20 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 border text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+            style={{
+              borderColor: `rgba(${profilePalette.rgb}, 0.5)`,
+              backgroundColor: `rgba(${profilePalette.rgb}, 0.1)`,
+              color: profilePalette.hex,
+              boxShadow: `0 0 12px rgba(${profilePalette.rgb}, 0.2)`
+            }}
           >
             <Swords className="w-3.5 h-3.5" />
             ENTER ARENA DUEL
@@ -324,11 +346,23 @@ export function Profile() {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 w-full flex-1 space-y-8">
         {/* Profile Dossier Header */}
-        <header className="flex flex-col md:flex-row items-center md:items-end justify-between gap-6 p-6 bg-[#080808] border border-white/10 relative overflow-hidden font-mono">
+        <header 
+          className="flex flex-col md:flex-row items-center md:items-end justify-between gap-6 p-6 bg-[#080808] border relative overflow-hidden font-mono transition-all"
+          style={{
+            borderColor: `rgba(${profilePalette.rgb}, 0.3)`,
+            boxShadow: `0 0 30px rgba(${profilePalette.rgb}, 0.07)`
+          }}
+        >
           <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6 w-full md:w-auto">
             {/* Operator Avatar with Upload Trigger */}
             <div className="relative group shrink-0">
-              <div className="w-24 h-24 bg-black border border-[#00FF00]/50 flex items-center justify-center shadow-[0_0_25px_rgba(0,255,0,0.2)] overflow-hidden">
+              <div 
+                className="w-24 h-24 bg-black border flex items-center justify-center overflow-hidden transition-all"
+                style={{
+                  borderColor: `rgba(${profilePalette.rgb}, 0.6)`,
+                  boxShadow: `0 0 25px rgba(${profilePalette.rgb}, 0.25)`
+                }}
+              >
                 {currentPhoto ? (
                   <img
                     src={currentPhoto}
@@ -338,7 +372,7 @@ export function Profile() {
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center text-zinc-500">
-                    <User className="w-10 h-10 text-[#00FF00]" />
+                    <User className="w-10 h-10" style={{ color: profilePalette.hex }} />
                   </div>
                 )}
               </div>
@@ -357,7 +391,12 @@ export function Profile() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={avatarUploading}
-                    className="absolute -bottom-2 -right-2 p-1.5 bg-black border border-[#00FF00] text-[#00FF00] hover:bg-[#00FF00] hover:text-black transition-colors shadow-[0_0_10px_rgba(0,255,0,0.4)] cursor-pointer"
+                    className="absolute -bottom-2 -right-2 p-1.5 bg-black border transition-colors cursor-pointer"
+                    style={{
+                      borderColor: profilePalette.hex,
+                      color: profilePalette.hex,
+                      boxShadow: `0 0 10px rgba(${profilePalette.rgb}, 0.4)`
+                    }}
                     title="Change Profile Picture"
                   >
                     {avatarUploading ? (
@@ -372,14 +411,24 @@ export function Profile() {
 
             <div className="flex-1 text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 flex-wrap">
-                <span className="text-[10px] text-[#00FF00] uppercase font-black tracking-widest">
+                <span 
+                  className="text-[10px] uppercase font-black tracking-widest"
+                  style={{ color: profilePalette.hex }}
+                >
                   OPERATOR ID: #{profile.username.toUpperCase()}
                 </span>
                 <span className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-1.5 py-0.2">
                   AUTHENTICATED
                 </span>
                 {isSelf && (
-                  <span className="text-[10px] bg-[#00FF00]/10 border border-[#00FF00]/30 text-[#00FF00] px-1.5 py-0.2 font-bold">
+                  <span 
+                    className="text-[10px] border px-1.5 py-0.2 font-bold"
+                    style={{
+                      backgroundColor: `rgba(${profilePalette.rgb}, 0.12)`,
+                      borderColor: `rgba(${profilePalette.rgb}, 0.35)`,
+                      color: profilePalette.hex
+                    }}
+                  >
                     MY ACCOUNT
                   </span>
                 )}
@@ -397,7 +446,7 @@ export function Profile() {
               {/* Location & Region Badge */}
               <div className="flex items-center justify-center sm:justify-start gap-3 text-xs text-zinc-400 mb-3">
                 <span className="flex items-center gap-1">
-                  <Globe2 className="w-3.5 h-3.5 text-[#00FF00]" />
+                  <Globe2 className="w-3.5 h-3.5" style={{ color: profilePalette.hex }} />
                   <span>{currentNationality}</span>
                 </span>
                 <span>•</span>
@@ -409,7 +458,7 @@ export function Profile() {
 
               <div className="flex flex-wrap justify-center sm:justify-start gap-2">
                 <Badge icon={<Award className="w-3.5 h-3.5 text-[#F27D26]" />} text={`RATING: ${profile.elo} ELO`} />
-                <Badge icon={<Flame className="w-3.5 h-3.5 text-[#00FF00]" />} text={`W/L: ${profile.wins} - ${profile.losses} (${winRate}%)`} />
+                <Badge icon={<Flame className="w-3.5 h-3.5" style={{ color: profilePalette.hex }} />} text={`W/L: ${profile.wins} - ${profile.losses} (${winRate}%)`} />
                 <Badge icon={<Terminal className="w-3.5 h-3.5 text-zinc-400" />} text={`Streak: ${profile.streak} Wins`} />
                 <Badge icon={<Shield className="w-3.5 h-3.5 text-purple-400" />} text={`Accuracy: ${profile.testAccuracy}%`} />
               </div>
@@ -421,22 +470,28 @@ export function Profile() {
             <button
               onClick={handleGeminiAudit}
               disabled={isAuditing}
-              className="px-4 py-2 bg-gradient-to-r from-[#00FF00]/20 to-[#00FF00]/10 border border-[#00FF00] hover:bg-[#00FF00]/30 text-[#00FF00] font-mono text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(0,255,0,0.15)] cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 border font-mono text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              style={{
+                borderColor: profilePalette.hex,
+                backgroundColor: `rgba(${profilePalette.rgb}, 0.12)`,
+                color: profilePalette.hex,
+                boxShadow: `0 0 16px rgba(${profilePalette.rgb}, 0.2)`
+              }}
             >
               {isAuditing ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-[#00FF00]" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   <span>GEMINI AUDITING...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-[#00FF00]" />
+                  <Sparkles className="w-4 h-4" />
                   <span>RUN GEMINI TACTICAL AUDIT</span>
                 </>
               )}
             </button>
             {auditSuccess && (
-              <span className="text-[10px] font-mono text-[#00FF00] flex items-center gap-1">
+              <span className="text-[10px] font-mono flex items-center gap-1" style={{ color: profilePalette.hex }}>
                 <CheckCircle2 className="w-3 h-3" /> DOSSIER RE-EVALUATED BY GEMINI
               </span>
             )}
@@ -473,6 +528,15 @@ export function Profile() {
             </div>
           </section>
         )}
+
+        {/* Neon Signature Palette Customizer */}
+        <NeonPalettePicker 
+          isSelf={isSelf} 
+          ownerUsername={profile.username}
+          onSelectPalette={(paletteId) => {
+            setProfile(p => p ? { ...p, neonPalette: paletteId } : p);
+          }}
+        />
 
         {/* CODE PLAYBACK SECTION (Mandated User Feature) */}
         <section ref={playbackSectionRef} className="w-full space-y-3 font-mono">
@@ -534,19 +598,25 @@ export function Profile() {
         {/* Analytics Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Skill Radar Chart */}
-          <section className="lg:col-span-7 bg-[#080808] border border-white/10 p-6 flex flex-col">
-            <CompetencyRadar username={profile.username} data={profile.competencies} />
+          <section 
+            className="lg:col-span-7 bg-[#080808] border p-6 flex flex-col transition-all"
+            style={{ borderColor: `rgba(${profilePalette.rgb}, 0.3)` }}
+          >
+            <CompetencyRadar username={profile.username} data={profile.competencies} accentColor={profilePalette.hex} />
           </section>
 
           {/* Combat Statistics Matrix */}
-          <section className="lg:col-span-5 bg-[#080808] border border-white/10 p-6 flex flex-col justify-between font-mono">
+          <section 
+            className="lg:col-span-5 bg-[#080808] border p-6 flex flex-col justify-between font-mono transition-all"
+            style={{ borderColor: `rgba(${profilePalette.rgb}, 0.3)` }}
+          >
             <div>
               <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
                 <h2 className="text-xs font-black text-zinc-300 uppercase tracking-widest flex items-center gap-2">
-                  <Cpu className="w-3.5 h-3.5 text-[#00FF00]" />
+                  <Cpu className="w-3.5 h-3.5" style={{ color: profilePalette.hex }} />
                   COMBAT TELEMETRY // REAL STATS
                 </h2>
-                <span className="text-[10px] text-[#00FF00] font-bold uppercase">
+                <span className="text-[10px] font-bold uppercase" style={{ color: profilePalette.hex }}>
                   RATING: {profile.elo} ELO
                 </span>
               </div>
@@ -555,10 +625,10 @@ export function Profile() {
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div className="bg-black p-3 border border-white/10">
                   <div className="text-[9px] text-zinc-500 uppercase font-bold flex items-center gap-1 mb-1">
-                    <TrendingUp className="w-3 h-3 text-[#00FF00]" /> PEAK ELO
+                    <TrendingUp className="w-3 h-3" style={{ color: profilePalette.hex }} /> PEAK ELO
                   </div>
                   <div className="text-2xl font-black text-white">{profile.peakElo}</div>
-                  <div className="text-[9px] text-[#00FF00] mt-0.5 font-bold">CURRENT: {profile.elo}</div>
+                  <div className="text-[9px] mt-0.5 font-bold" style={{ color: profilePalette.hex }}>CURRENT: {profile.elo}</div>
                 </div>
 
                 <div className="bg-black p-3 border border-white/10">

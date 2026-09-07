@@ -44,9 +44,14 @@ const TOPIC_INTEL: Record<string, string> = {
 interface CompetencyRadarProps {
   username?: string;
   data?: CompetencyTopic[];
+  accentColor?: string;
 }
 
-export function CompetencyRadar({ username = 'OPERATOR', data = DEFAULT_TOPICS }: CompetencyRadarProps) {
+export function CompetencyRadar({ 
+  username = 'OPERATOR', 
+  data = DEFAULT_TOPICS,
+  accentColor = '#00FF00'
+}: CompetencyRadarProps) {
   const [showBenchmark, setShowBenchmark] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState<string>('Arrays');
 
@@ -216,12 +221,12 @@ export function CompetencyRadar({ username = 'OPERATOR', data = DEFAULT_TOPICS }
             <Radar
               name={`${username.toUpperCase()} (Operator)`}
               dataKey="userScore"
-              stroke="#00FF00"
+              stroke={accentColor}
               strokeWidth={2.2}
-              fill="#00FF00"
+              fill={accentColor}
               fillOpacity={0.28}
-              dot={{ r: 3.5, fill: '#00FF00', strokeWidth: 1.5, stroke: '#000000' }}
-              activeDot={{ r: 6, fill: '#FFFFFF', stroke: '#00FF00', strokeWidth: 2.5 }}
+              dot={{ r: 3.5, fill: accentColor, strokeWidth: 1.5, stroke: '#000000' }}
+              activeDot={{ r: 6, fill: '#FFFFFF', stroke: accentColor, strokeWidth: 2.5 }}
             />
 
             <Legend

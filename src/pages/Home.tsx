@@ -23,6 +23,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GlobalActivity } from '../components/GlobalActivity';
 import { Leaderboard } from '../components/Leaderboard';
+import { LobbyOperatorsList } from '../components/LobbyOperatorsList';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SoundToggle } from '../components/SoundToggle';
 
@@ -39,7 +40,7 @@ export function Home() {
   const [practiceTopic, setPracticeTopic] = useState('Dynamic Programming');
   const [practiceDiff, setPracticeDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [practiceLang, setPracticeLang] = useState('c');
-  const [activeFeedTab, setActiveFeedTab] = useState<'leaderboard' | 'telemetry'>('leaderboard');
+  const [activeFeedTab, setActiveFeedTab] = useState<'leaderboard' | 'telemetry' | 'operators'>('leaderboard');
 
   const handleQuickMatch = () => {
     const roomId = uuidv4().substring(0, 8);
@@ -269,6 +270,18 @@ export function Home() {
                 <Radio className="w-3.5 h-3.5" />
                 <span>LIVE TELEMETRY [MATCH FEED]</span>
               </button>
+
+              <button
+                onClick={() => setActiveFeedTab('operators')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase transition-all cursor-pointer border ${
+                  activeFeedTab === 'operators'
+                    ? 'bg-[#00FF00] text-black border-[#00FF00] shadow-[0_0_12px_rgba(0,255,0,0.3)]'
+                    : 'bg-[#0c0c0c] text-zinc-400 border-white/10 hover:border-white/30 hover:text-white'
+                }`}
+              >
+                <Swords className="w-3.5 h-3.5" />
+                <span>ACTIVE OPERATORS [DIRECT DUEL]</span>
+              </button>
             </div>
 
             <div className="hidden sm:flex items-center gap-2 text-[10px] text-zinc-500 uppercase font-bold">
@@ -280,8 +293,10 @@ export function Home() {
           {/* Active View */}
           {activeFeedTab === 'leaderboard' ? (
             <Leaderboard embedded />
-          ) : (
+          ) : activeFeedTab === 'telemetry' ? (
             <GlobalActivity />
+          ) : (
+            <LobbyOperatorsList currentUsername={accountProfile?.username || currentUser.name} />
           )}
         </motion.div>
       </main>

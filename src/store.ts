@@ -11,6 +11,7 @@ export interface UserAccountProfile {
   nationality: string;
   region: string;
   photoURL?: string;
+  neonPalette?: string;
   isSetupComplete: boolean;
 }
 
