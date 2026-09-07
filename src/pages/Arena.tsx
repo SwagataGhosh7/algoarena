@@ -55,6 +55,8 @@ import {
 import { AIHelper } from '../components/AIHelper';
 import { AIHelperItem } from '../types';
 import { OpponentProfileModal } from '../components/OpponentProfileModal';
+import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 const STARTER_TEMPLATES: Record<string, string> = {
   javascript: getLanguageBoilerplate('javascript'),
@@ -510,7 +512,7 @@ export function Arena() {
         const currentTimer = timerSecondsRef.current;
         const currentEval = evalResultRef.current;
         
-        const userName = currentUser?.name || 'Operator';
+        const userName = currentUser?.name || 'Player';
         const currentOpponents = Object.values(currentRoom?.users || {}).filter((u: any) => u.id !== socket.id) as any[];
         const oppName = currentOpponents[0]?.name || (winner && winner.id !== socket.id ? winner.name : 'AlgoArena Bot') || 'AlgoArena Bot';
         const elapsedSecs = Math.max(15, 600 - currentTimer);
@@ -1163,8 +1165,7 @@ export function Arena() {
             </button>
             <div className="h-4 w-px bg-white/10" />
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-[#00FF00]" />
-              <span className="text-xs font-black tracking-widest text-white uppercase">ALGOARENA // 1V1 DUEL GATEWAY</span>
+              <AlgoArenaLogo size="sm" showTagline={false} />
             </div>
           </div>
           <div className="flex items-center gap-2 text-[11px] text-amber-400 font-mono">
@@ -1187,7 +1188,7 @@ export function Arena() {
                 AUTHENTICATION REQUIRED TO JOIN DUEL
               </h1>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                You've received an invitation to duel in Room <span className="text-[#00FF00] font-bold">#{roomId}</span>. To preserve competitive ladder integrity and prevent anonymous bypass, all operators must authenticate with Google or Email before entering the arena.
+                You've received an invitation to duel in Room <span className="text-[#00FF00] font-bold">#{roomId}</span>. To preserve competitive ladder integrity and prevent anonymous bypass, all players must authenticate with Google or Email before entering the arena.
               </p>
             </div>
 
@@ -1248,8 +1249,7 @@ export function Arena() {
             </button>
             <div className="h-4 w-px bg-white/10" />
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#00FF00]" />
-              <span className="text-xs font-black tracking-widest text-white uppercase">ALGOARENA // OPERATOR ONBOARDING</span>
+              <AlgoArenaLogo size="sm" showTagline={false} />
             </div>
           </div>
           <div className="flex items-center gap-2 text-[11px] text-[#00FF00] font-mono">
@@ -1269,10 +1269,10 @@ export function Arena() {
                 STEP 2 OF 2: PROFILE INITIALIZATION
               </div>
               <h1 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white">
-                INITIALIZE OPERATOR PROFILE
+                INITIALIZE PLAYER PROFILE
               </h1>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Authentication verified for <span className="text-white font-bold">{accountProfile?.email || firebaseUser?.email || 'Operator'}</span>. Please configure your competition handle, nationality, and region in the profile initialization dashboard to become eligible for 1v1 match <span className="text-[#00FF00] font-bold">#{roomId}</span>.
+                Authentication verified for <span className="text-white font-bold">{accountProfile?.email || firebaseUser?.email || 'Player'}</span>. Please configure your competition handle, nationality, and region in the profile initialization dashboard to become eligible for 1v1 match <span className="text-[#00FF00] font-bold">#{roomId}</span>.
               </p>
             </div>
 
@@ -1284,7 +1284,7 @@ export function Arena() {
               <div className="flex items-center justify-between text-zinc-400">
                 <span className="font-bold uppercase">AUTHENTICATED USER:</span>
                 <span className="text-[#00FF00] font-bold truncate max-w-[200px]">
-                  {accountProfile?.email || firebaseUser?.email || 'Operator'}
+                  {accountProfile?.email || firebaseUser?.email || 'Player'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-zinc-400">
@@ -1352,12 +1352,7 @@ export function Arena() {
             <ArrowLeft className="w-4 h-4" /> LEAVE ROOM
           </button>
           <div className="flex items-center gap-3">
-            <span 
-              className="font-black text-lg sm:text-xl tracking-tighter uppercase transition-colors"
-              style={{ color: neonTheme.hex }}
-            >
-              ALGOARENA // MATCH
-            </span>
+            <AlgoArenaLogo size="sm" showTagline={false} />
             <span 
               className="text-[10px] px-2 py-0.5 border font-mono uppercase font-bold hidden md:inline-block"
               style={{
@@ -1373,6 +1368,8 @@ export function Arena() {
         </div>
         
         <div className="flex items-center gap-3 sm:gap-4">
+          <ThemeToggle />
+
           {/* Persona Combat HUD Neon Palette Selector */}
           <div className="hidden lg:block">
             <NeonPaletteSelector />
@@ -3419,7 +3416,7 @@ export function Arena() {
           <span className="hidden md:inline">Observers: 128</span>
         </div>
         <div>
-          PROVISIONED BY GEMINI-ARENA-CORE // VERSION 1.0.4
+          ALGOARENA PROTOCOL
         </div>
       </footer>
     </div>

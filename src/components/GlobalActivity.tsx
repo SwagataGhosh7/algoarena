@@ -128,7 +128,7 @@ export function GlobalActivity() {
         <div className="bg-[#080808] border border-white/10 p-4 relative overflow-hidden transition-all hover:border-[#00FF00]/40 group">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
-              ONLINE OPERATORS
+              ONLINE PLAYERS
             </span>
             <div className="w-7 h-7 bg-black border border-white/10 flex items-center justify-center group-hover:border-[#00FF00]/50 transition-colors">
               <Users className="w-3.5 h-3.5 text-[#00FF00]" />

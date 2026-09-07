@@ -194,8 +194,6 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
               livePulse ? "bg-white scale-125 shadow-[0_0_12px_#ffffff]" : "bg-[#00FF00] shadow-[0_0_8px_#00FF00]"
             )} />
             <span>REAL-TIME RANKED LADDER</span>
-            <span className="text-zinc-600">//</span>
-            <span className="text-zinc-400">{meta?.season || 'SEASON 04'}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white flex items-center gap-3">
             <Trophy className="w-7 h-7 text-[#00FF00]" />
@@ -264,7 +262,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
         <div className="mb-10">
           <div className="flex items-center gap-2 font-mono text-xs uppercase font-bold text-zinc-400 mb-4 tracking-wider">
             <Crown className="w-4 h-4 text-amber-400" />
-            <span>TOP 3 PODIUM // APEX DUELISTS</span>
+            <span>TOP 3 ELO PLAYERS</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -299,7 +297,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
         </div>
       )}
 
-      {/* Current Operator Rank Banner (Sticky / Prominent) */}
+      {/* Current Player Rank Banner (Sticky / Prominent) */}
       {currentUserEntry && (
         <div className="mb-8 p-4 bg-gradient-to-r from-[#00FF00]/10 via-[#0a180a] to-[#0a0a0a] border border-[#00FF00]/50 shadow-[0_0_20px_rgba(0,255,0,0.1)] flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono">
           <div className="flex items-center gap-3">
@@ -364,14 +362,14 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
           ))}
         </div>
 
-        {/* Search Operator Handle */}
+        {/* Search Player Handle */}
         <div className="relative w-full md:w-64">
           <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search operator handle..."
+            placeholder="Search player handle..."
             className="w-full bg-black border border-white/15 pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-[#00FF00] transition-colors"
           />
           {searchQuery && (
@@ -391,7 +389,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
           <thead>
             <tr className="border-b border-white/10 bg-[#101010] text-zinc-500 text-[10px] uppercase tracking-wider font-bold">
               <th className="py-3 px-4 w-16 text-center">RANK</th>
-              <th className="py-3 px-4">OPERATOR</th>
+              <th className="py-3 px-4">PLAYER</th>
               <th className="py-3 px-4 text-right">RATING (ELO)</th>
               <th className="py-3 px-4 text-center">RECORD</th>
               <th className="py-3 px-4 text-right">WIN RATE</th>
@@ -416,7 +414,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
             ) : leaderboard.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-14 text-center text-zinc-500">
-                  <p className="text-sm font-bold uppercase text-zinc-400">NO OPERATORS MATCH CRITERIA</p>
+                  <p className="text-sm font-bold uppercase text-zinc-400">NO PLAYERS MATCH CRITERIA</p>
                   <p className="text-xs text-zinc-600 mt-1">Try resetting the rating filter or searching another handle.</p>
                 </td>
               </tr>

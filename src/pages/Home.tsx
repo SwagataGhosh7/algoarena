@@ -26,6 +26,8 @@ import { Leaderboard } from '../components/Leaderboard';
 import { LobbyOperatorsList } from '../components/LobbyOperatorsList';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SoundToggle } from '../components/SoundToggle';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
 
 export function Home() {
   const navigate = useNavigate();
@@ -75,15 +77,9 @@ export function Home() {
       {/* Top Navbar */}
       <nav className="h-14 border-b border-[#00FF00]/30 flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#00FF00] flex items-center justify-center text-black font-black text-xs shadow-[0_0_12px_rgba(0,255,0,0.4)]">
-              <Terminal className="w-4 h-4" />
-            </div>
-            <span className="text-[#00FF00] font-black text-xl tracking-tighter uppercase">
-              ALGOARENA // LADDER
-            </span>
-          </div>
+          <AlgoArenaLogo size="sm" showTagline={false} />
           <ConnectionStatus />
+          <ThemeToggle />
           <SoundToggle />
         </div>
 
@@ -148,14 +144,14 @@ export function Home() {
               className="flex items-center gap-2 px-3 py-1.5 bg-[#00FF00] text-black font-mono text-xs font-black uppercase tracking-wider hover:bg-[#00dd00] shadow-[0_0_12px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>SIGN IN // AUTH</span>
+              <span>SIGN IN</span>
             </button>
           )}
         </div>
       </nav>
 
       {/* Main Hero and Action Grid */}
-      <main className="max-w-6xl mx-auto px-6 py-12 flex flex-col justify-center items-center text-center flex-1 w-full">
+      <main className="max-w-6xl mx-auto px-6 py-10 flex flex-col justify-center items-center text-center flex-1 w-full">
         {accountProfile && !accountProfile.isSetupComplete && (
           <div className="mb-6 p-3 bg-black border border-[#F27D26] text-[#F27D26] font-mono text-xs flex flex-col sm:flex-row items-center justify-between gap-3 max-w-xl w-full shadow-[0_0_15px_rgba(242,125,38,0.15)]">
             <div className="flex items-center gap-2 text-left">
@@ -175,20 +171,16 @@ export function Home() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-6 flex items-center gap-2 text-[#00FF00] bg-[#00FF00]/10 border border-[#00FF00]/30 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-widest"
+          className="mb-8 flex flex-col items-center justify-center"
         >
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00FF00] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00FF00]"></span>
-          </span>
-          SEASON 04 // REAL-TIME DUEL ARENA
+          <AlgoArenaLogo size="xl" showTagline={true} align="center" />
         </motion.div>
 
         <motion.h1 
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="text-6xl sm:text-7xl md:text-8xl font-black italic uppercase tracking-tighter leading-none mb-6 text-white"
+          className="text-5xl sm:text-6xl md:text-7xl font-black uppercase tracking-tight leading-none mb-6 text-white font-brand"
         >
           CODE. <span className="text-[#00FF00] drop-shadow-[0_0_25px_rgba(0,255,0,0.3)]">COMPETE.</span> CONQUER.
         </motion.h1>
@@ -197,7 +189,7 @@ export function Home() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
-          className="text-xs sm:text-sm text-zinc-400 font-mono uppercase tracking-wider max-w-2xl mx-auto mb-12 leading-relaxed"
+          className="text-xs sm:text-sm text-zinc-400 font-mono uppercase tracking-wider max-w-2xl mx-auto mb-10 leading-relaxed"
         >
           Real-time competitive programming arena with AI problem synthesis, instant test execution, and dedicated DSA sparring with AlgoArena Bot.
         </motion.p>
@@ -213,7 +205,7 @@ export function Home() {
             icon={<Swords className="w-6 h-6 text-[#00FF00]" />}
             title="Quick Match 1v1"
             description="Enter the matchmaking queue against an opponent with equivalent ELO rating."
-            actionText="ENTER QUEUE // READY"
+            actionText="ENTER QUEUE"
             onClick={handleQuickMatch}
             primary
           />
@@ -263,7 +255,7 @@ export function Home() {
                 <span>HAVE A MATCH CODE? ENTER INVITED 1V1 DUEL</span>
               </div>
               <p className="text-[11px] text-zinc-400 font-mono">
-                Enter your friend's 8-character duel key. New operators will be prompted to authenticate & initialize their profile before entering combat.
+                Enter your friend's 8-character duel key. New players will be prompted to authenticate & initialize their profile before entering combat.
               </p>
             </div>
 
@@ -315,7 +307,7 @@ export function Home() {
                 }`}
               >
                 <Trophy className="w-3.5 h-3.5" />
-                <span>GLOBAL LEADERBOARD [STANDINGS]</span>
+                <span>GLOBAL LEADERBOARD</span>
               </button>
 
               <button
@@ -327,7 +319,7 @@ export function Home() {
                 }`}
               >
                 <Radio className="w-3.5 h-3.5" />
-                <span>LIVE TELEMETRY [MATCH FEED]</span>
+                <span>LIVE TELEMETRY</span>
               </button>
 
               <button
@@ -339,13 +331,13 @@ export function Home() {
                 }`}
               >
                 <Swords className="w-3.5 h-3.5" />
-                <span>ACTIVE OPERATORS [DIRECT DUEL]</span>
+                <span>ACTIVE PLAYERS</span>
               </button>
             </div>
 
             <div className="hidden sm:flex items-center gap-2 text-[10px] text-zinc-500 uppercase font-bold">
               <span className="w-2 h-2 rounded-full bg-[#00FF00] animate-pulse"></span>
-              <span>NODE: US-EAST // 24/7 BROADCAST</span>
+              <span>NODE: US-EAST [BROADCAST]</span>
             </div>
           </div>
 
@@ -515,7 +507,7 @@ export function Home() {
           <span className="hidden md:inline">Bot Engine: ALGOARENA-DSA-V2</span>
         </div>
         <div>
-          PROVISIONED BY GEMINI-ARENA-CORE // VERSION 1.0.4
+          ALGOARENA
         </div>
       </footer>
     </div>

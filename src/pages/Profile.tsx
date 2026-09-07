@@ -30,6 +30,9 @@ import { CodePlayback } from '../components/CodePlayback';
 import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
 import { NeonPalettePicker } from '../components/NeonPalettePicker';
+import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { SoundToggle } from '../components/SoundToggle';
 import { useNeonTheme, NEON_PALETTES } from '../lib/neonThemes';
 import { useStore } from '../store';
 import { UserProfileData, MatchRecord, CompetencyTopic } from '../types';
@@ -42,7 +45,7 @@ export function Profile() {
   const { accountProfile, setProfileSetupOpen, saveProfileAndSync, currentUser } = useStore();
   const { palette: neonTheme, setPalette: setNeonTheme } = useNeonTheme();
 
-  const operatorName = username || accountProfile?.username || currentUser.name || 'Operator';
+  const operatorName = username || accountProfile?.username || currentUser.name || 'Player';
   const isSelf = Boolean(
     accountProfile && 
     (accountProfile.username.toLowerCase() === operatorName.toLowerCase() ||
@@ -124,7 +127,7 @@ export function Profile() {
         testAccuracy: 95,
         totalDuels: localMatches.length,
         preferredLanguages: [{ language: 'TypeScript', percentage: 100, color: '#00FF00' }],
-        honors: ['ARENA OPERATOR'],
+        honors: ['ARENA PLAYER'],
         competencies: [],
         matches: localMatches,
         aiAssessment: {
@@ -224,7 +227,7 @@ export function Profile() {
       <div className="min-h-screen bg-[#050505] text-[#00FF00] font-mono flex flex-col items-center justify-center space-y-3">
         <Loader2 className="w-8 h-8 animate-spin" />
         <span className="text-xs uppercase tracking-widest font-black">
-          ACCESSING OPERATOR DOSSIER // RE-INDEXING TELEMETRY...
+          ACCESSING PLAYER PROFILE...
         </span>
       </div>
     );
@@ -264,15 +267,12 @@ export function Profile() {
             <Trophy className="w-3.5 h-3.5" style={{ color: profilePalette.hex }} /> <span>LEADERBOARD</span>
           </button>
           <span className="text-zinc-600">|</span>
-          <span 
-            className="font-black text-lg tracking-tighter uppercase transition-colors"
-            style={{ color: profilePalette.hex }}
-          >
-            ALGOARENA // OPERATOR DOSSIER
-          </span>
+          <AlgoArenaLogo size="sm" showTagline={false} />
         </div>
 
         <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <SoundToggle />
           {isSelf && (
             <button
               onClick={() => setProfileSetupOpen(true)}
@@ -378,7 +378,7 @@ export function Profile() {
                   className="text-[10px] uppercase font-black tracking-widest"
                   style={{ color: profilePalette.hex }}
                 >
-                  OPERATOR ID: #{profile.username.toUpperCase()}
+                  PLAYER ID: #{profile.username.toUpperCase()}
                 </span>
                 <span className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-1.5 py-0.2">
                   AUTHENTICATED

@@ -149,7 +149,7 @@ export function ProfileSetupModal() {
     }
 
     if (!cleanName) {
-      setError('Please provide your operator full name or alias.');
+      setError('Please provide your player full name or alias.');
       return;
     }
 
@@ -245,7 +245,7 @@ export function ProfileSetupModal() {
                 DUEL CHALLENGE DETECTED: ROOM #{pendingRoomId}
               </div>
               <div className="text-[10px] text-zinc-300 font-mono">
-                Set up your Operator handle to enter combat immediately.
+                Set up your Player handle to enter combat immediately.
               </div>
             </div>
           </div>
@@ -378,7 +378,7 @@ export function ProfileSetupModal() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="operator@algoarena.com"
+                placeholder="player@algoarena.com"
                 autoCapitalize="none"
                 autoCorrect="off"
                 className="w-full px-3 py-2 bg-black/60 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-[#00FF00] transition-colors"

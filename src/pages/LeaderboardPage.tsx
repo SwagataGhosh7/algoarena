@@ -1,7 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { Terminal, ArrowLeft, User, Trophy } from 'lucide-react';
+import { ArrowLeft, User } from 'lucide-react';
 import { Leaderboard } from '../components/Leaderboard';
 import { ConnectionStatus } from '../components/ConnectionStatus';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { SoundToggle } from '../components/SoundToggle';
+import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
 import { useStore } from '../store';
 
 export function LeaderboardPage() {
@@ -21,18 +24,13 @@ export function LeaderboardPage() {
             <span>RETURN TO ARENA</span>
           </button>
           <div className="h-4 w-px bg-white/10 hidden sm:block" />
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#00FF00] flex items-center justify-center text-black font-black text-xs shadow-[0_0_12px_rgba(0,255,0,0.4)]">
-              <Trophy className="w-4 h-4" />
-            </div>
-            <span className="text-[#00FF00] font-black text-xl tracking-tighter uppercase">
-              ALGOARENA // STANDINGS
-            </span>
-          </div>
+          <AlgoArenaLogo size="sm" showTagline={false} />
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
           <ConnectionStatus />
+          <ThemeToggle />
+          <SoundToggle />
           <button 
             onClick={() => navigate(`/profile/${currentUser.name.replace(' ', '')}`)}
             className="flex items-center gap-2 bg-[#080808] border border-[#00FF00]/30 px-3 py-1.5 cursor-pointer hover:border-[#00FF00] hover:bg-[#00FF00]/10 transition-all group"
@@ -54,10 +52,10 @@ export function LeaderboardPage() {
       <footer className="h-12 border-t border-white/10 flex items-center justify-between px-6 bg-[#0a0a0a] text-zinc-500 font-mono text-[10px] uppercase shrink-0">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-[#00FF00] rounded-none animate-pulse"></span>
-          <span>SEASON 04 RANKING ENGINE // REAL-TIME PERSISTENCE</span>
+          <span>ALGOARENA GLOBAL RANKED STANDINGS</span>
         </div>
         <div>
-          <span>ALGOARENA GLOBAL RANKED STANDINGS</span>
+          <span>LIVE TELEMETRY ACTIVE</span>
         </div>
       </footer>
     </div>

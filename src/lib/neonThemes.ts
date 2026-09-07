@@ -25,7 +25,18 @@ export const NEON_PALETTES: NeonPalette[] = [
     rgb: '0, 255, 0',
     contrastText: '#000000',
     description: 'Canonical competitive cyberpunk terminal green. High clarity, zero latency perception.',
-    tag: 'ESPORTS CANON'
+    tag: 'CLASSIC GREEN'
+  },
+  {
+    id: 'blue-violet',
+    name: 'Blue & Violet',
+    codeName: 'LOGO-VIOLET',
+    hex: '#00D2FF',
+    secondaryHex: '#A855F7',
+    rgb: '0, 210, 255',
+    contrastText: '#000000',
+    description: 'Electric azure cyan and vivid quantum violet matching the AlgoArena brand insignia.',
+    tag: 'BRAND LOGO'
   },
   {
     id: 'cyber-cyan',

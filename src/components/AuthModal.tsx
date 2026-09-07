@@ -182,10 +182,10 @@ export function AuthModal() {
             </div>
             <div>
               <h2 className="text-sm font-black text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                ALGOARENA // AUTH MATRIX
+                AlgoArena
               </h2>
               <p className="text-[10px] text-zinc-400 font-mono">
-                {mode === 'signin' ? 'Verify security clearance' : 'Initialize operator account'}
+                {mode === 'signin' ? 'Verify security clearance' : 'Initialize player account'}
               </p>
             </div>
           </div>
@@ -287,7 +287,7 @@ export function AuthModal() {
             {mode === 'register' && (
               <div>
                 <label className="block text-[10px] font-mono uppercase text-zinc-400 font-bold mb-1.5">
-                  Full Name / Operator Alias
+                  Full Name / Player Alias
                 </label>
                 <div className="relative">
                   <input
@@ -310,7 +310,7 @@ export function AuthModal() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="operator@algoarena.com"
+                  placeholder="player@algoarena.com"
                   required
                   className="w-full px-3 py-2.5 bg-black/60 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-[#00FF00] transition-colors"
                 />
@@ -346,7 +346,7 @@ export function AuthModal() {
               ) : mode === 'signin' ? (
                 <>
                   <LogIn className="w-4 h-4" />
-                  <span>AUTHENTICATE OPERATOR</span>
+                  <span>AUTHENTICATE PLAYER</span>
                 </>
               ) : (
                 <>

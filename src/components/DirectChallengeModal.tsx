@@ -88,7 +88,7 @@ export function DirectChallengeManager({
         setOutgoingTarget(null);
         setStatusMessage({
           type: 'error',
-          text: `Operator ${data.targetUsername} declined your duel invitation.`,
+          text: `Player ${data.targetUsername} declined your duel invitation.`,
         });
         setTimeout(() => setStatusMessage(null), 6000);
       }
@@ -297,7 +297,7 @@ export function DirectChallengeManager({
                       <span className="w-2 h-2 rounded-full bg-[#00FF00] animate-ping" />
                     </h3>
                     <p className="text-[10px] text-[#00FF00] font-bold">
-                      REAL-TIME OPERATOR INVITATION
+                      REAL-TIME PLAYER INVITATION
                     </p>
                   </div>
                 </div>
@@ -412,7 +412,7 @@ export function DirectChallengeManager({
                       DIRECT DUEL CHALLENGE
                     </h3>
                     <p className="text-[10px] text-zinc-400">
-                      Transmit private duel request to active operator
+                      Transmit private duel request to active player
                     </p>
                   </div>
                 </div>

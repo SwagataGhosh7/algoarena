@@ -191,7 +191,7 @@ export interface CodePlaybackData {
 export interface MatchRecord {
   id: string;
   opponent: string;
-  opponentRank: string;
+  opponentRank?: string;
   opponentAvatar?: string;
   outcome: 'Victory' | 'Defeat';
   problem: string;
@@ -199,9 +199,11 @@ export interface MatchRecord {
   duration: string;
   language: string;
   eloChange: number;
-  testScore: string;
+  testScore?: string;
+  passedCount?: number;
+  totalTests?: number;
   date: string;
-  timestamp: string;
+  timestamp?: string;
   completedAt?: string;
   code?: string;
   opponentCode?: string;

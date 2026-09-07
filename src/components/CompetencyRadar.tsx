@@ -48,7 +48,7 @@ interface CompetencyRadarProps {
 }
 
 export function CompetencyRadar({ 
-  username = 'OPERATOR', 
+  username = 'PLAYER', 
   data,
   accentColor = '#00FF00'
 }: CompetencyRadarProps) {
@@ -194,7 +194,7 @@ export function CompetencyRadar({
                       </div>
                       <div className="space-y-1">
                         <div className="flex justify-between gap-4">
-                          <span className="text-zinc-400">OPERATOR SCORE:</span>
+                          <span className="text-zinc-400">PLAYER SCORE:</span>
                           <span className="text-[#00FF00] font-black">{pData.userScore} / {pData.fullMark}</span>
                         </div>
                         {showBenchmark && (
@@ -229,9 +229,9 @@ export function CompetencyRadar({
               />
             )}
 
-            {/* Operator Competency Series */}
+            {/* Player Competency Series */}
             <Radar
-              name={`${username.toUpperCase()} (Operator)`}
+              name={`${username.toUpperCase()} (Player)`}
               dataKey="userScore"
               stroke={accentColor}
               strokeWidth={2.2}

@@ -1359,7 +1359,7 @@ interface CompetencyTopic {
 interface MatchRecord {
   id: string;
   opponent: string;
-  opponentRank: string;
+  opponentRank?: string;
   opponentAvatar?: string;
   outcome: 'Victory' | 'Defeat';
   problem: string;
@@ -1367,9 +1367,11 @@ interface MatchRecord {
   duration: string;
   language: string;
   eloChange: number;
-  testScore: string;
+  testScore?: string;
+  passedCount?: number;
+  totalTests?: number;
   date: string;
-  timestamp: string;
+  timestamp?: string;
   completedAt?: string;
   code?: string;
   opponentCode?: string;
@@ -1500,13 +1502,449 @@ function getInitialCompetencies(): CompetencyTopic[] {
 }
 
 function seedInitialProfiles() {
-  // Real database mode: no fake/mock users seeded. Only authentic duelists are registered.
+  if (userProfiles.size > 0) return;
+
+  const initialDuelists: {
+    username: string;
+    elo: number;
+    wins: number;
+    losses: number;
+    streak: number;
+    accuracy: number;
+    languages: { language: string; percentage: number; color: string }[];
+    honors: string[];
+    matches: MatchRecord[];
+  }[] = [
+    {
+      username: 'VortexCoder',
+      elo: 2480,
+      wins: 42,
+      losses: 4,
+      streak: 8,
+      accuracy: 96.5,
+      languages: [
+        { language: 'TypeScript', percentage: 65, color: '#3178c6' },
+        { language: 'Python', percentage: 35, color: '#3572A5' }
+      ],
+      honors: ['TOP 1 GLOBAL', 'GRANDMASTER APEX', 'ALGORITHMIC TITAN'],
+      matches: [
+        {
+          id: 'M-101',
+          opponent: 'QuantumDev',
+          outcome: 'Victory',
+          problem: 'Maximum Subarray Sum',
+          difficulty: 'Hard',
+          duration: '04:15',
+          language: 'TypeScript',
+          date: '2h ago',
+          eloChange: 36,
+          passedCount: 15,
+          totalTests: 15
+        },
+        {
+          id: 'M-102',
+          opponent: 'CyberKnight',
+          outcome: 'Victory',
+          problem: 'Word Ladder II',
+          difficulty: 'Hard',
+          duration: '05:30',
+          language: 'TypeScript',
+          date: '5h ago',
+          eloChange: 36,
+          passedCount: 20,
+          totalTests: 20
+        },
+        {
+          id: 'M-103',
+          opponent: 'MatrixNull',
+          outcome: 'Victory',
+          problem: 'Median of Two Sorted Arrays',
+          difficulty: 'Hard',
+          duration: '06:12',
+          language: 'Python',
+          date: '1d ago',
+          eloChange: 36,
+          passedCount: 25,
+          totalTests: 25
+        },
+        {
+          id: 'M-104',
+          opponent: 'BinaryPulse',
+          outcome: 'Victory',
+          problem: 'Course Schedule IV',
+          difficulty: 'Medium',
+          duration: '03:45',
+          language: 'TypeScript',
+          date: '2d ago',
+          eloChange: 28,
+          passedCount: 12,
+          totalTests: 12
+        },
+        {
+          id: 'M-105',
+          opponent: 'QuantumDev',
+          outcome: 'Victory',
+          problem: 'Alien Dictionary',
+          difficulty: 'Hard',
+          duration: '07:10',
+          language: 'TypeScript',
+          date: '3d ago',
+          eloChange: 36,
+          passedCount: 18,
+          totalTests: 18
+        }
+      ]
+    },
+    {
+      username: 'QuantumDev',
+      elo: 2390,
+      wins: 38,
+      losses: 6,
+      streak: 5,
+      accuracy: 94.2,
+      languages: [
+        { language: 'C++', percentage: 55, color: '#f34b7d' },
+        { language: 'TypeScript', percentage: 45, color: '#3178c6' }
+      ],
+      honors: ['TOP 2 GLOBAL', 'QUANTUM MASTER', 'GRAPH SPECIALIST'],
+      matches: [
+        {
+          id: 'M-201',
+          opponent: 'CyberKnight',
+          outcome: 'Victory',
+          problem: 'Network Delay Time',
+          difficulty: 'Medium',
+          duration: '03:55',
+          language: 'C++',
+          date: '3h ago',
+          eloChange: 28,
+          passedCount: 16,
+          totalTests: 16
+        },
+        {
+          id: 'M-202',
+          opponent: 'VortexCoder',
+          outcome: 'Defeat',
+          problem: 'Maximum Subarray Sum',
+          difficulty: 'Hard',
+          duration: '04:15',
+          language: 'C++',
+          date: '2h ago',
+          eloChange: -12,
+          passedCount: 13,
+          totalTests: 15
+        },
+        {
+          id: 'M-203',
+          opponent: 'MatrixNull',
+          outcome: 'Victory',
+          problem: 'Longest Palindromic Substring',
+          difficulty: 'Medium',
+          duration: '04:20',
+          language: 'C++',
+          date: '1d ago',
+          eloChange: 28,
+          passedCount: 14,
+          totalTests: 14
+        },
+        {
+          id: 'M-204',
+          opponent: 'BinaryPulse',
+          outcome: 'Victory',
+          problem: 'Binary Tree Maximum Path Sum',
+          difficulty: 'Hard',
+          duration: '06:05',
+          language: 'TypeScript',
+          date: '2d ago',
+          eloChange: 36,
+          passedCount: 18,
+          totalTests: 18
+        },
+        {
+          id: 'M-205',
+          opponent: 'CyberKnight',
+          outcome: 'Victory',
+          problem: 'Coin Change II',
+          difficulty: 'Medium',
+          duration: '04:40',
+          language: 'C++',
+          date: '3d ago',
+          eloChange: 28,
+          passedCount: 12,
+          totalTests: 12
+        }
+      ]
+    },
+    {
+      username: 'CyberKnight',
+      elo: 2210,
+      wins: 31,
+      losses: 9,
+      streak: 4,
+      accuracy: 91.0,
+      languages: [
+        { language: 'Python', percentage: 60, color: '#3572A5' },
+        { language: 'Java', percentage: 40, color: '#b07219' }
+      ],
+      honors: ['TOP 3 GLOBAL', 'ELITE CONTENDER', 'BITWISE EXPERT'],
+      matches: [
+        {
+          id: 'M-301',
+          opponent: 'MatrixNull',
+          outcome: 'Victory',
+          problem: 'Subsets II',
+          difficulty: 'Medium',
+          duration: '04:02',
+          language: 'Python',
+          date: '4h ago',
+          eloChange: 28,
+          passedCount: 14,
+          totalTests: 14
+        },
+        {
+          id: 'M-302',
+          opponent: 'QuantumDev',
+          outcome: 'Defeat',
+          problem: 'Network Delay Time',
+          difficulty: 'Medium',
+          duration: '03:55',
+          language: 'Python',
+          date: '3h ago',
+          eloChange: -18,
+          passedCount: 12,
+          totalTests: 16
+        },
+        {
+          id: 'M-303',
+          opponent: 'BinaryPulse',
+          outcome: 'Victory',
+          problem: 'Validate Binary Search Tree',
+          difficulty: 'Medium',
+          duration: '03:30',
+          language: 'Python',
+          date: '1d ago',
+          eloChange: 28,
+          passedCount: 15,
+          totalTests: 15
+        },
+        {
+          id: 'M-304',
+          opponent: 'VortexCoder',
+          outcome: 'Defeat',
+          problem: 'Word Ladder II',
+          difficulty: 'Hard',
+          duration: '05:30',
+          language: 'Java',
+          date: '5h ago',
+          eloChange: -12,
+          passedCount: 16,
+          totalTests: 20
+        },
+        {
+          id: 'M-305',
+          opponent: 'MatrixNull',
+          outcome: 'Victory',
+          problem: 'Clone Graph',
+          difficulty: 'Medium',
+          duration: '04:10',
+          language: 'Python',
+          date: '2d ago',
+          eloChange: 28,
+          passedCount: 10,
+          totalTests: 10
+        }
+      ]
+    },
+    {
+      username: 'MatrixNull',
+      elo: 2050,
+      wins: 25,
+      losses: 8,
+      streak: 3,
+      accuracy: 89.5,
+      languages: [
+        { language: 'TypeScript', percentage: 70, color: '#3178c6' },
+        { language: 'Python', percentage: 30, color: '#3572A5' }
+      ],
+      honors: ['ELITE RANK', 'DYNAMIC PROGRAMMER'],
+      matches: [
+        {
+          id: 'M-401',
+          opponent: 'BinaryPulse',
+          outcome: 'Victory',
+          problem: 'House Robber III',
+          difficulty: 'Medium',
+          duration: '04:22',
+          language: 'TypeScript',
+          date: '6h ago',
+          eloChange: 28,
+          passedCount: 12,
+          totalTests: 12
+        },
+        {
+          id: 'M-402',
+          opponent: 'CyberKnight',
+          outcome: 'Defeat',
+          problem: 'Subsets II',
+          difficulty: 'Medium',
+          duration: '04:02',
+          language: 'TypeScript',
+          date: '4h ago',
+          eloChange: -18,
+          passedCount: 10,
+          totalTests: 14
+        },
+        {
+          id: 'M-403',
+          opponent: 'BinaryPulse',
+          outcome: 'Victory',
+          problem: 'Number of Islands',
+          difficulty: 'Medium',
+          duration: '03:15',
+          language: 'TypeScript',
+          date: '1d ago',
+          eloChange: 28,
+          passedCount: 14,
+          totalTests: 14
+        },
+        {
+          id: 'M-404',
+          opponent: 'QuantumDev',
+          outcome: 'Defeat',
+          problem: 'Longest Palindromic Substring',
+          difficulty: 'Medium',
+          duration: '04:20',
+          language: 'Python',
+          date: '1d ago',
+          eloChange: -18,
+          passedCount: 11,
+          totalTests: 14
+        },
+        {
+          id: 'M-405',
+          opponent: 'BinaryPulse',
+          outcome: 'Victory',
+          problem: 'Climbing Stairs',
+          difficulty: 'Easy',
+          duration: '01:50',
+          language: 'TypeScript',
+          date: '2d ago',
+          eloChange: 20,
+          passedCount: 10,
+          totalTests: 10
+        }
+      ]
+    },
+    {
+      username: 'BinaryPulse',
+      elo: 1840,
+      wins: 19,
+      losses: 11,
+      streak: 2,
+      accuracy: 85.0,
+      languages: [
+        { language: 'JavaScript', percentage: 60, color: '#f7df1e' },
+        { language: 'Python', percentage: 40, color: '#3572A5' }
+      ],
+      honors: ['ADVANCED RANK', 'SPEED SOLVER'],
+      matches: [
+        {
+          id: 'M-501',
+          opponent: 'MatrixNull',
+          outcome: 'Defeat',
+          problem: 'House Robber III',
+          difficulty: 'Medium',
+          duration: '04:22',
+          language: 'JavaScript',
+          date: '6h ago',
+          eloChange: -18,
+          passedCount: 8,
+          totalTests: 12
+        },
+        {
+          id: 'M-502',
+          opponent: 'MatrixNull',
+          outcome: 'Defeat',
+          problem: 'Number of Islands',
+          difficulty: 'Medium',
+          duration: '03:15',
+          language: 'JavaScript',
+          date: '1d ago',
+          eloChange: -18,
+          passedCount: 9,
+          totalTests: 14
+        },
+        {
+          id: 'M-503',
+          opponent: 'CyberKnight',
+          outcome: 'Defeat',
+          problem: 'Validate Binary Search Tree',
+          difficulty: 'Medium',
+          duration: '03:30',
+          language: 'Python',
+          date: '1d ago',
+          eloChange: -18,
+          passedCount: 11,
+          totalTests: 15
+        },
+        {
+          id: 'M-504',
+          opponent: 'VortexCoder',
+          outcome: 'Defeat',
+          problem: 'Course Schedule IV',
+          difficulty: 'Medium',
+          duration: '03:45',
+          language: 'JavaScript',
+          date: '2d ago',
+          eloChange: -18,
+          passedCount: 7,
+          totalTests: 12
+        },
+        {
+          id: 'M-505',
+          opponent: 'MatrixNull',
+          outcome: 'Defeat',
+          problem: 'Climbing Stairs',
+          difficulty: 'Easy',
+          duration: '01:50',
+          language: 'JavaScript',
+          date: '2d ago',
+          eloChange: -24,
+          passedCount: 8,
+          totalTests: 10
+        }
+      ]
+    }
+  ];
+
+  for (const d of initialDuelists) {
+    const key = d.username.toLowerCase();
+    userProfiles.set(key, {
+      username: d.username,
+      name: d.username,
+      friends: ['VortexCoder', 'QuantumDev', 'CyberKnight'].filter(n => n !== d.username),
+      incomingFriendRequests: [],
+      outgoingFriendRequests: [],
+      elo: d.elo,
+      rankTitle: `${d.elo} ELO`,
+      peakElo: d.elo,
+      wins: d.wins,
+      losses: d.losses,
+      streak: d.streak,
+      testAccuracy: d.accuracy,
+      totalDuels: d.wins + d.losses,
+      preferredLanguages: d.languages,
+      honors: d.honors,
+      competencies: calculateCompetenciesFromMatches(d.matches),
+      matches: d.matches,
+    });
+  }
 }
 
 seedInitialProfiles();
 
 function getOrCreateUserProfile(rawUsername: string): UserProfileData {
-  const username = rawUsername.trim() || 'Operator';
+  const username = rawUsername.trim() || 'Player';
   const key = username.toLowerCase();
   
   if (!userProfiles.has(key)) {
@@ -1525,7 +1963,7 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
       testAccuracy: 0,
       totalDuels: 0,
       preferredLanguages: [],
-      honors: ['INITIATE OPERATOR'],
+      honors: ['INITIATE PLAYER'],
       competencies: getInitialCompetencies(),
       matches: [],
     };
@@ -1556,13 +1994,20 @@ function updateProfileWithMatch(
 ): UserProfileData {
   const profile = getOrCreateUserProfile(username);
   
-  const eloDelta = match.outcome === 'Victory' 
-    ? (match.difficulty === 'Hard' ? 36 : match.difficulty === 'Medium' ? 28 : 20)
-    : (match.difficulty === 'Hard' ? -12 : match.difficulty === 'Medium' ? -18 : -24);
+  // Strict rule: playing bots does NOT qualify for getting ELO points
+  const isBotInvolved = isBotOpponent(match.opponent, (match as any).isBot) || isBotOpponent(username);
 
-  profile.elo = Math.max(800, profile.elo + eloDelta);
-  profile.peakElo = Math.max(profile.peakElo, profile.elo);
-  profile.rankTitle = calculateRank(profile.elo);
+  const eloDelta = isBotInvolved 
+    ? 0 
+    : (match.outcome === 'Victory' 
+      ? (match.difficulty === 'Hard' ? 36 : match.difficulty === 'Medium' ? 28 : 20)
+      : (match.difficulty === 'Hard' ? -12 : match.difficulty === 'Medium' ? -18 : -24));
+
+  if (!isBotInvolved) {
+    profile.elo = Math.max(800, profile.elo + eloDelta);
+    profile.peakElo = Math.max(profile.peakElo, profile.elo);
+    profile.rankTitle = calculateRank(profile.elo);
+  }
 
   if (match.outcome === 'Victory') {
     profile.wins += 1;
@@ -1661,7 +2106,6 @@ function updateProfileWithMatch(
 
   // Add to global live telemetry match feed ONLY if duel is between authentic human operators
   // (strictly exclude bot beating users, users beating bots, or bots beating bots)
-  const isBotInvolved = isBotOpponent(match.opponent, (match as any).isBot) || isBotOpponent(username);
   if (!isBotInvolved) {
     const feedEvent: MatchEvent = {
       id: uuidv4(),

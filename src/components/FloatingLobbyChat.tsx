@@ -59,7 +59,7 @@ export function FloatingLobbyChat() {
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;
 
-  const currentUsername = accountProfile?.username || currentUser?.name || 'Operator';
+  const currentUsername = accountProfile?.username || currentUser?.name || 'Player';
   const currentElo = 1200;
   const currentAvatar = accountProfile?.photoURL;
 
@@ -340,7 +340,7 @@ export function FloatingLobbyChat() {
               <div className="px-3 py-1 bg-[#00FF00]/5 border-b border-[#00FF00]/10 flex items-center justify-between text-[10px] text-zinc-400">
                 <span className="text-[#00FF00]/80 flex items-center gap-1 truncate">
                   <Sparkles className="w-3 h-3 text-[#00FF00]" />
-                  <span>Subnet // Broadcasts to all online operators</span>
+                  <span>Broadcasts to all online players</span>
                 </span>
                 <span className="text-zinc-500 shrink-0">Terminal</span>
               </div>

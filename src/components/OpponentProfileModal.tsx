@@ -92,7 +92,7 @@ export function OpponentProfileModal({
         matches: [],
         aiAssessment: {
           tacticalCritique: 'Autonomous sparring agent utilizing optimized Big-O analysis and zero-allocation tree recursion.',
-          focusRecommendation: 'Calibrated to assist human operators in mastering competitive interview algorithms.',
+          focusRecommendation: 'Calibrated to assist human players in mastering competitive interview algorithms.',
           lastAudited: new Date().toLocaleDateString(),
         },
         friends: [],
@@ -265,7 +265,7 @@ export function OpponentProfileModal({
               <div className="py-16 flex flex-col items-center justify-center gap-3 text-zinc-500">
                 <Loader2 className="w-8 h-8 text-[#00FF00] animate-spin" />
                 <span className="text-xs uppercase tracking-wider font-bold">
-                  DECRYPTING OPERATOR DOSSIER...
+                  DECRYPTING PLAYER PROFILE...
                 </span>
               </div>
             ) : (
@@ -288,7 +288,7 @@ export function OpponentProfileModal({
                         </span>
                       ) : (
                         <span className="text-zinc-400 text-xs font-bold uppercase">
-                          CONNECT AS OPERATOR ALLY
+                          CONNECT AS ALLY
                         </span>
                       )}
                     </div>

@@ -184,7 +184,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
   const handleChallengeClick = (op: ActiveLobbyUser) => {
     const norm = getNormalizedStatus(op);
     if (norm === 'IN-MATCH') {
-      setActionNotice(`Operator ${op.username} is currently engaged in a duel match. You can challenge them once their duel concludes.`);
+      setActionNotice(`Player ${op.username} is currently engaged in a duel match. You can challenge them once their duel concludes.`);
       setTimeout(() => setActionNotice(null), 4000);
       return;
     }
@@ -201,7 +201,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
           </div>
           <div>
             <h3 className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-2">
-              <span>ACTIVE LOBBY OPERATORS</span>
+              <span>ACTIVE LOBBY PLAYERS</span>
               <span className="text-[10px] bg-[#00FF00]/20 text-[#00FF00] px-1.5 py-0.5 border border-[#00FF00]/40 font-mono">
                 {counts.online} AVAILABLE FOR CHALLENGE
               </span>
@@ -235,7 +235,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="FILTER OPERATORS..."
+              placeholder="FILTER PLAYERS..."
               className="w-full bg-black border border-white/15 pl-8 pr-2 py-1 text-[11px] text-white uppercase placeholder:text-zinc-600 outline-none focus:border-[#00FF00]"
             />
           </div>
@@ -349,7 +349,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-white/10 text-[10px] text-zinc-500 uppercase tracking-wider bg-black/60">
-              <th className="py-2.5 px-4">Operator</th>
+              <th className="py-2.5 px-4">Player</th>
               <th className="py-2.5 px-4 text-center">Rating</th>
               <th className="py-2.5 px-4 text-center">Presence Status</th>
               <th className="py-2.5 px-4 text-right">Direct Challenge</th>
@@ -361,7 +361,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
                 <td colSpan={4} className="py-8 text-center text-zinc-500 text-xs">
                   <div className="flex items-center justify-center gap-2">
                     <Radio className="w-4 h-4 text-[#00FF00] animate-pulse" />
-                    <span>SCANNING ARENA TELEMETRY FOR ACTIVE OPERATORS...</span>
+                    <span>SCANNING ARENA TELEMETRY FOR ACTIVE PLAYERS...</span>
                   </div>
                 </td>
               </tr>
@@ -369,8 +369,8 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
               <tr>
                 <td colSpan={4} className="py-8 text-center text-zinc-500 text-xs">
                   {presenceFilter !== 'ALL'
-                    ? `No operators found with presence status [${presenceFilter}].`
-                    : 'No active operators matching query. Try summoning AlgoArena Bot.'}
+                    ? `No players found with presence status [${presenceFilter}].`
+                    : 'No active players matching query. Try summoning AlgoArena Bot.'}
                 </td>
               </tr>
             ) : (
@@ -483,7 +483,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
                           type="button"
                           onClick={() => handleChallengeClick(op)}
                           className="px-3 py-1 bg-[#F27D26]/10 hover:bg-[#F27D26]/20 border border-[#F27D26]/40 text-[#F27D26] font-bold uppercase text-[10px] tracking-wider transition-all cursor-pointer inline-flex items-center gap-1.5"
-                          title="Operator is currently in a duel. Click for details."
+                          title="Player is currently in a duel. Click for details."
                         >
                           <Clock className="w-3 h-3" />
                           <span>IN MATCH</span>
@@ -493,7 +493,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
                           type="button"
                           onClick={() => handleChallengeClick(op)}
                           className="px-3 py-1 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/50 text-amber-400 font-bold uppercase text-[10px] tracking-wider transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-[0_0_8px_rgba(251,191,36,0.15)]"
-                          title="Operator is idle. Send duel challenge alert."
+                          title="Player is idle. Send duel challenge alert."
                         >
                           <Swords className="w-3 h-3" />
                           <span>INVITE (IDLE)</span>
