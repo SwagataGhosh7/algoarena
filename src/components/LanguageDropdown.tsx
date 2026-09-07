@@ -32,10 +32,55 @@ export interface LanguageOption {
 
 export const SUPPORTED_LANGUAGES: LanguageOption[] = [
   {
+    id: 'c',
+    name: 'C (C17 / GCC)',
+    shortName: 'C',
+    version: 'C17 / GCC',
+    compiler: 'GCC 13 (C17 standard)',
+    extension: '.c',
+    monacoLang: 'c',
+    accentColor: '#9ca3af',
+    badgeBg: 'bg-zinc-700/20',
+    badgeText: 'text-zinc-300',
+    badgeBorder: 'border-zinc-600/40',
+    description: 'Classic bare-metal speed with manual pointer, memory management, and standard C17 libraries.',
+    popular: true,
+  },
+  {
+    id: 'java',
+    name: 'Java 21',
+    shortName: 'Java',
+    version: 'Java 21',
+    compiler: 'OpenJDK 21 LTS',
+    extension: '.java',
+    monacoLang: 'java',
+    accentColor: '#ea2d2e',
+    badgeBg: 'bg-[#ea2d2e]/15',
+    badgeText: 'text-[#fb7185]',
+    badgeBorder: 'border-[#ea2d2e]/40',
+    description: 'Strongly-typed object-oriented runtime with java.util collections, streams, and high performance.',
+    popular: true,
+  },
+  {
+    id: 'cpp',
+    name: 'C++ 20',
+    shortName: 'C++',
+    version: 'C++ 20',
+    compiler: 'GCC 13 (C++20 standard)',
+    extension: '.cpp',
+    monacoLang: 'cpp',
+    accentColor: '#00599c',
+    badgeBg: 'bg-[#00599c]/20',
+    badgeText: 'text-[#38bdf8]',
+    badgeBorder: 'border-[#00599c]/50',
+    description: 'Maximum competitive performance with full STL containers suite, fast I/O, and low overhead.',
+    popular: true,
+  },
+  {
     id: 'python',
-    name: 'Python',
+    name: 'Python 3.11',
     shortName: 'Python',
-    version: '3.11',
+    version: 'Python 3.11',
     compiler: 'CPython 3.11',
     extension: '.py',
     monacoLang: 'python',
@@ -43,14 +88,14 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
     badgeBg: 'bg-[#387eb8]/15',
     badgeText: 'text-[#60a5fa]',
     badgeBorder: 'border-[#387eb8]/40',
-    description: 'Concise syntax with rich standard library. Ideal for rapid DSA logic.',
+    description: 'Concise syntax with collections, heapq, and rich standard library. Ideal for rapid DSA logic.',
     popular: true,
   },
   {
     id: 'javascript',
     name: 'JavaScript',
     shortName: 'JS',
-    version: 'Node 18 (ES6+)',
+    version: 'Node 18 (ES2022)',
     compiler: 'V8 Engine',
     extension: '.js',
     monacoLang: 'javascript',
@@ -58,44 +103,14 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
     badgeBg: 'bg-[#f7df1e]/15',
     badgeText: 'text-[#fde047]',
     badgeBorder: 'border-[#f7df1e]/40',
-    description: 'High-speed event-driven execution with modern ES2022 features.',
-    popular: true,
-  },
-  {
-    id: 'cpp',
-    name: 'C++',
-    shortName: 'C++',
-    version: 'C++20',
-    compiler: 'GCC 13 (O2)',
-    extension: '.cpp',
-    monacoLang: 'cpp',
-    accentColor: '#00599c',
-    badgeBg: 'bg-[#00599c]/20',
-    badgeText: 'text-[#38bdf8]',
-    badgeBorder: 'border-[#00599c]/50',
-    description: 'Maximum performance with STL containers and low-overhead memory.',
-    popular: true,
-  },
-  {
-    id: 'java',
-    name: 'Java',
-    shortName: 'Java',
-    version: '21 LTS',
-    compiler: 'OpenJDK 21',
-    extension: '.java',
-    monacoLang: 'java',
-    accentColor: '#ea2d2e',
-    badgeBg: 'bg-[#ea2d2e]/15',
-    badgeText: 'text-[#fb7185]',
-    badgeBorder: 'border-[#ea2d2e]/40',
-    description: 'Strongly-typed object-oriented runtime with java.util collection suite.',
+    description: 'High-speed event-driven execution with modern ES2022 features and dynamic data structures.',
     popular: true,
   },
   {
     id: 'typescript',
     name: 'TypeScript',
     shortName: 'TS',
-    version: '5.4',
+    version: 'TypeScript 5.4',
     compiler: 'tsc + Node runtime',
     extension: '.ts',
     monacoLang: 'typescript',
@@ -103,29 +118,14 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
     badgeBg: 'bg-[#3178c6]/15',
     badgeText: 'text-[#93c5fd]',
     badgeBorder: 'border-[#3178c6]/40',
-    description: 'JavaScript with static type safety, interfaces, and generic checks.',
-    popular: false,
-  },
-  {
-    id: 'c',
-    name: 'C',
-    shortName: 'C',
-    version: 'C17',
-    compiler: 'GCC 13',
-    extension: '.c',
-    monacoLang: 'c',
-    accentColor: '#9ca3af',
-    badgeBg: 'bg-zinc-700/20',
-    badgeText: 'text-zinc-300',
-    badgeBorder: 'border-zinc-600/40',
-    description: 'Classic bare-metal speed with manual pointer and memory management.',
-    popular: false,
+    description: 'JavaScript with strict static type safety, interfaces, generic checks, and IDE autocompletion.',
+    popular: true,
   },
   {
     id: 'go',
-    name: 'Go',
+    name: 'Go 1.22',
     shortName: 'Go',
-    version: '1.22',
+    version: 'Go 1.22',
     compiler: 'gc compiler',
     extension: '.go',
     monacoLang: 'go',
@@ -133,14 +133,14 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
     badgeBg: 'bg-[#00add8]/15',
     badgeText: 'text-[#67e8f9]',
     badgeBorder: 'border-[#00add8]/40',
-    description: 'Fast compilation, clean formatting, and lightweight memory model.',
+    description: 'Fast compilation, clean formatting, goroutines, and lightweight memory model.',
     popular: false,
   },
   {
     id: 'rust',
-    name: 'Rust',
+    name: 'Rust 2021',
     shortName: 'Rust',
-    version: '2021',
+    version: 'Rust 2021',
     compiler: 'rustc (2021 edition)',
     extension: '.rs',
     monacoLang: 'rust',
@@ -148,13 +148,13 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
     badgeBg: 'bg-[#dea584]/15',
     badgeText: 'text-[#fdba74]',
     badgeBorder: 'border-[#dea584]/40',
-    description: 'Zero-cost abstractions with compile-time borrow checker safety.',
+    description: 'Zero-cost abstractions with compile-time borrow checker safety and memory guarantees.',
     popular: false,
   },
 ];
 
 // Top featured languages highlighted in quick switcher
-export const FEATURED_LANGUAGE_IDS = ['python', 'javascript', 'cpp', 'java'];
+export const FEATURED_LANGUAGE_IDS = ['c', 'java', 'cpp', 'python', 'javascript', 'typescript'];
 
 export interface LanguageDropdownProps {
   currentLanguage: string;
@@ -306,7 +306,7 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
         {/* Label and Active Language Name */}
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-zinc-400 uppercase tracking-widest hidden sm:inline">
-            LANG:
+            LANGUAGE:
           </span>
           <span className="font-bold text-[#00FF00] tracking-wide">
             {activeLang.name}
@@ -330,28 +330,28 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
           id={menuId}
           role="listbox"
           aria-label="Supported Programming Languages"
-          className="absolute right-0 top-full mt-2 w-80 sm:w-88 bg-[#101010] border border-[#00FF00]/40 rounded-lg shadow-[0_10px_35px_rgba(0,0,0,0.85)] z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md"
+          className="absolute right-0 top-full mt-2 w-84 sm:w-96 bg-[#101010] border border-[#00FF00]/40 rounded-lg shadow-[0_10px_35px_rgba(0,0,0,0.85)] z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md"
         >
           {/* Menu Header */}
           <div className="p-3 bg-[#161616] border-b border-white/10 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Code2 className="w-4 h-4 text-[#00FF00]" />
               <span className="text-xs font-mono font-bold tracking-wider text-white uppercase">
-                Solution Language
+                Select Language
               </span>
             </div>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30 font-bold">
-              8 RUNTIMES
+              8 RUNTIMES READY
             </span>
           </div>
 
-          {/* Quick-Access Top 4 Languages Row (Python, JS, C++, Java) */}
+          {/* Quick-Access Top 6 Languages Row (C, Java, C++, Python, JS, TS) */}
           <div className="px-3 pt-2.5 pb-2 bg-black/40 border-b border-white/5">
             <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-1.5 flex items-center justify-between">
               <span>QUICK SWITCH:</span>
-              <span className="text-zinc-400">1-CLICK</span>
+              <span className="text-[#00FF00] font-bold">1-CLICK</span>
             </div>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
               {SUPPORTED_LANGUAGES.filter(l => FEATURED_LANGUAGE_IDS.includes(l.id)).map(l => {
                 const isActive = l.id === currentLanguage;
                 return (
@@ -359,7 +359,7 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
                     key={l.id}
                     type="button"
                     onClick={() => selectLanguage(l.id)}
-                    className={`px-2 py-1 text-center font-mono text-xs font-bold rounded transition-all flex items-center justify-center gap-1.5 border ${
+                    className={`px-1.5 py-1 text-center font-mono text-[11px] font-bold rounded transition-all flex items-center justify-center gap-1 border ${
                       isActive
                         ? 'bg-[#00FF00]/20 text-[#00FF00] border-[#00FF00]/50 shadow-[0_0_8px_rgba(0,255,0,0.2)]'
                         : 'bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10 border-white/10'
@@ -367,10 +367,10 @@ export const LanguageDropdown: React.FC<LanguageDropdownProps> = ({
                     title={`Switch immediately to ${l.name} (${l.version})`}
                   >
                     <span 
-                      className="w-2 h-2 rounded-full shrink-0" 
+                      className="w-1.5 h-1.5 rounded-full shrink-0" 
                       style={{ backgroundColor: l.accentColor }} 
                     />
-                    <span>{l.shortName}</span>
+                    <span className="truncate">{l.shortName}</span>
                   </button>
                 );
               })}

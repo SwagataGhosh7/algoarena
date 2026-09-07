@@ -23,12 +23,12 @@ interface ExpectedSolutionsViewerProps {
 }
 
 const SUPPORTED_LANGUAGES: { id: string; name: string; ext: string; monacoLang: string }[] = [
-  { id: 'python', name: 'Python 3', ext: '.py', monacoLang: 'python' },
+  { id: 'c', name: 'C (C17 / GCC)', ext: '.c', monacoLang: 'c' },
+  { id: 'java', name: 'Java 21', ext: '.java', monacoLang: 'java' },
+  { id: 'cpp', name: 'C++ 20', ext: '.cpp', monacoLang: 'cpp' },
+  { id: 'python', name: 'Python 3.11', ext: '.py', monacoLang: 'python' },
   { id: 'javascript', name: 'JavaScript', ext: '.js', monacoLang: 'javascript' },
   { id: 'typescript', name: 'TypeScript', ext: '.ts', monacoLang: 'typescript' },
-  { id: 'cpp', name: 'C++20', ext: '.cpp', monacoLang: 'cpp' },
-  { id: 'java', name: 'Java 17', ext: '.java', monacoLang: 'java' },
-  { id: 'c', name: 'C (C11)', ext: '.c', monacoLang: 'c' },
   { id: 'go', name: 'Go 1.22', ext: '.go', monacoLang: 'go' },
   { id: 'rust', name: 'Rust 2021', ext: '.rs', monacoLang: 'rust' },
 ];

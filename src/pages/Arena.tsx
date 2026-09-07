@@ -1938,15 +1938,15 @@ export function Arena() {
               </span>
               <span className="text-zinc-600 hidden sm:inline">|</span>
               <span className="text-zinc-400 text-[11px] hidden md:inline">
-                SYNTAX: <span className="text-white uppercase font-bold">{
-                  language === 'cpp' ? 'C++' :
+                LANGUAGE: <span className="text-white uppercase font-bold">{
+                  language === 'c' ? 'C (C17 / GCC)' :
+                  language === 'java' ? 'Java 21' :
+                  language === 'cpp' ? 'C++ 20' :
+                  language === 'python' ? 'Python 3.11' :
                   language === 'javascript' ? 'JavaScript' :
-                  language === 'python' ? 'Python' :
-                  language === 'java' ? 'Java' :
                   language === 'typescript' ? 'TypeScript' :
-                  language === 'c' ? 'C' :
-                  language === 'go' ? 'Go' :
-                  language === 'rust' ? 'Rust' : language
+                  language === 'go' ? 'Go 1.22' :
+                  language === 'rust' ? 'Rust 2021' : language
                 }</span>
               </span>
 
