@@ -32,8 +32,8 @@ import { CodeReview } from '../components/CodeReview';
 import { NeonPalettePicker } from '../components/NeonPalettePicker';
 import { useNeonTheme, NEON_PALETTES } from '../lib/neonThemes';
 import { useStore } from '../store';
-import { UserProfileData, MatchRecord } from '../types';
-import { getLocalMatches, getSampleBenchmarkMatches, recordCompletedMatch } from '../lib/matchHistoryStorage';
+import { UserProfileData, MatchRecord, CompetencyTopic } from '../types';
+import { getLocalMatches, recordCompletedMatch } from '../lib/matchHistoryStorage';
 import { apiUrl } from '../api';
 
 export function Profile() {
@@ -198,43 +198,6 @@ export function Profile() {
   const handleSelectPlayback = (match: MatchRecord) => {
     setSelectedPlaybackMatch(match);
     playbackSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const handleSeedBenchmarkMatches = () => {
-    if (!profile) return;
-    const samples = getSampleBenchmarkMatches();
-    const existing = profile.matches || [];
-    const seen = new Set(existing.map(m => m.id));
-    const toAdd = samples.filter(s => !seen.has(s.id));
-    const updatedMatches = [...toAdd, ...existing];
-
-    const wins = updatedMatches.filter(m => m.outcome === 'Victory').length;
-    const losses = updatedMatches.filter(m => m.outcome === 'Defeat').length;
-    setProfile({
-      ...profile,
-      matches: updatedMatches,
-      totalDuels: updatedMatches.length,
-      wins,
-      losses,
-    });
-
-    // Save locally
-    toAdd.forEach(s => {
-      recordCompletedMatch(operatorName, {
-        id: s.id,
-        opponent: s.opponent,
-        opponentRank: s.opponentRank,
-        outcome: s.outcome,
-        problem: s.problem,
-        difficulty: s.difficulty,
-        duration: s.duration,
-        language: s.language,
-        eloChange: s.eloChange,
-        testScore: s.testScore,
-        playback: s.playback,
-        review: s.review,
-      });
-    });
   };
 
   const loadBenchmarkSamplePlayback = () => {
@@ -703,7 +666,6 @@ export function Profile() {
             username={profile.username}
             onSelectPlayback={handleSelectPlayback}
             onSelectReview={handleSelectPlayback}
-            onSeedSample={handleSeedBenchmarkMatches}
           />
         </section>
       </div>

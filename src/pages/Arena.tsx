@@ -9,7 +9,7 @@ import {
   Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, 
   Code2, Flag, Zap, ChevronUp, ChevronDown, ChevronRight, Copy, CheckCheck, Plus, 
   Clock, Cpu, AlertCircle, AlertTriangle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope,
-  Layers, ZoomIn, ZoomOut, History, Share2, Columns, Maximize2, Minimize2, Users
+  Layers, ZoomIn, ZoomOut, History, Share2, Columns, Maximize2, Minimize2, Users, ShieldCheck, LogIn
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
@@ -74,26 +74,43 @@ export function Arena() {
   const { 
     currentUser, 
     accountProfile, 
+    firebaseUser,
+    authLoading,
+    setAuthModalOpen,
     setProfileSetupOpen, 
     setPendingRoomId 
   } = useStore();
 
   const { palette: neonTheme } = useNeonTheme();
 
-  const isProfileReady = Boolean(
-    accountProfile?.isSetupComplete && (accountProfile.username || currentUser.name)
+  // Verification pipeline for duel arena entry:
+  // 1. Firebase Authentication: Must have verified Google or Email session
+  const isAuthenticated = Boolean(
+    firebaseUser || (accountProfile && accountProfile.uid && accountProfile.email)
   );
 
-  // If user accesses an invite room link without completing their profile setup,
-  // save pending room ID and trigger profile setup modal
+  // 2. Profile Initialization: Must complete operator callsign and region onboarding
+  const isProfileInitialized = Boolean(
+    accountProfile?.isSetupComplete && accountProfile.username && accountProfile.region
+  );
+
+  // 3. Match Eligibility: Only eligible to participate in invited 1v1 duels when BOTH are verified
+  const isEligibleToPlay = isAuthenticated && isProfileInitialized;
+
+  // Enforce sequential invite gateway:
+  // Invite via match code -> (if new users) authentication -> profile initialization dashboard -> eligible
   useEffect(() => {
     if (roomId) {
       setPendingRoomId(roomId);
     }
-    if (!isProfileReady) {
-      setProfileSetupOpen(true);
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        setAuthModalOpen(true);
+      } else if (!isProfileInitialized) {
+        setProfileSetupOpen(true);
+      }
     }
-  }, [roomId, isProfileReady, setPendingRoomId, setProfileSetupOpen]);
+  }, [roomId, authLoading, isAuthenticated, isProfileInitialized, setPendingRoomId, setAuthModalOpen, setProfileSetupOpen]);
 
   const queryMode = searchParams.get('mode');
   const queryTopic = searchParams.get('topic');
@@ -389,7 +406,7 @@ export function Arena() {
   };
 
   useEffect(() => {
-    if (!roomId || !isProfileReady) {
+    if (!roomId || !isEligibleToPlay) {
       return;
     }
 
@@ -397,7 +414,10 @@ export function Arena() {
     
     socket.emit('join_room', { 
       roomId, 
-      user: currentUser,
+      user: {
+        id: accountProfile?.uid || currentUser.id,
+        name: accountProfile?.username || currentUser.name,
+      },
       mode: isPracticeMode ? 'practice' : 'duel',
       topic: selectedTopic,
       difficulty: selectedDifficulty,
@@ -556,7 +576,7 @@ export function Arena() {
       socket.off('match_over');
       socket.off('opponent_afk_warning');
     };
-  }, [roomId, isProfileReady, currentUser, isPracticeMode, selectedTopic]);
+  }, [roomId, isEligibleToPlay, currentUser, accountProfile, isPracticeMode, selectedTopic]);
 
   // Keep the latest editor contents available if the opponent finishes or the connection drops first.
   useEffect(() => {
@@ -1117,7 +1137,103 @@ export function Arena() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [code, language, room?.problem, isRunningCode, isEvaluating, customInput, customExpected, timerSeconds]);
 
-  if (!isProfileReady) {
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-[#00FF00] font-mono gap-3">
+        <ConnectionStatus />
+        <Loader2 className="w-8 h-8 animate-spin my-2 text-[#00FF00]" />
+        <span className="text-xs uppercase tracking-widest font-black">VERIFYING DUELIST CLEARANCE...</span>
+      </div>
+    );
+  }
+
+  // Step 1: Firebase Authentication Requirement Gate
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex flex-col font-mono selection:bg-[#00FF00] selection:text-black">
+        {/* Top Minimal Nav */}
+        <header className="h-14 border-b border-white/10 px-4 sm:px-6 flex items-center justify-between bg-zinc-950/80 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/')}
+              className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>EXIT</span>
+            </button>
+            <div className="h-4 w-px bg-white/10" />
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#00FF00]" />
+              <span className="text-xs font-black tracking-widest text-white uppercase">ALGOARENA // 1V1 DUEL GATEWAY</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-amber-400 font-mono">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="uppercase tracking-wider">Authentication Required</span>
+          </div>
+        </header>
+
+        {/* Hero Gate Content */}
+        <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
+          <div className="max-w-lg w-full bg-zinc-950 border border-[#00FF00]/40 p-6 sm:p-8 space-y-6 shadow-[0_0_50px_rgba(0,255,0,0.15)] relative text-left">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#00FF00] via-[#39ff14] to-[#00FF00]" />
+
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-[#00FF00]/10 border border-[#00FF00]/30 text-[#00FF00] text-[10px] font-black uppercase tracking-widest">
+                <Zap className="w-3 h-3" />
+                INVITE VIA MATCH CODE DETECTED
+              </div>
+              <h1 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white">
+                AUTHENTICATION REQUIRED TO JOIN DUEL
+              </h1>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                You've received an invitation to duel in Room <span className="text-[#00FF00] font-bold">#{roomId}</span>. To preserve competitive ladder integrity and prevent anonymous bypass, all operators must authenticate with Google or Email before entering the arena.
+              </p>
+            </div>
+
+            <div className="p-4 bg-black/60 border border-white/10 space-y-2.5 text-xs font-mono">
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="font-bold uppercase">TARGET ARENA:</span>
+                <span className="text-white font-bold">ROOM #{roomId}</span>
+              </div>
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="font-bold uppercase">MATCH FORMAT:</span>
+                <span className="text-[#00FF00] font-bold">1v1 REAL-TIME DUEL</span>
+              </div>
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="font-bold uppercase">SECURITY STATUS:</span>
+                <span className="text-amber-400 font-bold">AWAITING FIREBASE AUTHENTICATION</span>
+              </div>
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="font-bold uppercase">SUPPORTED AUTH:</span>
+                <span className="text-zinc-300">GOOGLE OAUTH / EMAIL SIGN-IN</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="w-full py-3.5 bg-[#00FF00] hover:bg-[#00DD00] text-black font-black uppercase tracking-widest text-xs font-mono flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>AUTHENTICATE (GOOGLE / EMAIL) & JOIN DUEL</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/')}
+                className="w-full py-2.5 bg-black hover:bg-white/5 border border-white/15 text-zinc-400 hover:text-white font-bold uppercase tracking-wider text-[11px] font-mono transition-colors cursor-pointer"
+              >
+                RETURN TO LOBBY
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Step 2: Profile Initialization Dashboard Requirement Gate
+  if (!isProfileInitialized) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex flex-col font-mono selection:bg-[#00FF00] selection:text-black">
         {/* Top Minimal Nav */}
@@ -1133,45 +1249,47 @@ export function Arena() {
             <div className="h-4 w-px bg-white/10" />
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#00FF00]" />
-              <span className="text-xs font-black tracking-widest text-white uppercase">ALGOARENA // 1V1 DUEL GATEWAY</span>
+              <span className="text-xs font-black tracking-widest text-white uppercase">ALGOARENA // OPERATOR ONBOARDING</span>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-zinc-400">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <div className="flex items-center gap-2 text-[11px] text-[#00FF00] font-mono">
+            <span className="w-2 h-2 rounded-full bg-[#00FF00] animate-pulse" />
             <span className="uppercase tracking-wider">Profile Setup Required</span>
           </div>
         </header>
 
         {/* Hero Gate Content */}
         <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
-          <div className="max-w-lg w-full bg-zinc-950 border border-[#00FF00]/40 p-6 sm:p-8 space-y-6 shadow-[0_0_50px_rgba(0,255,0,0.15)] relative">
+          <div className="max-w-lg w-full bg-zinc-950 border border-[#00FF00]/40 p-6 sm:p-8 space-y-6 shadow-[0_0_50px_rgba(0,255,0,0.15)] relative text-left">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#00FF00] via-[#39ff14] to-[#00FF00]" />
 
-            <div className="space-y-2 text-center sm:text-left">
+            <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-[#00FF00]/10 border border-[#00FF00]/30 text-[#00FF00] text-[10px] font-black uppercase tracking-widest">
-                <Zap className="w-3 h-3" />
-                1V1 COMBAT CHALLENGE DETECTED
+                <Sparkles className="w-3 h-3" />
+                STEP 2 OF 2: PROFILE INITIALIZATION
               </div>
               <h1 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white">
-                SETUP REQUIRED TO PLAY MATCH
+                INITIALIZE OPERATOR PROFILE
               </h1>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                You've received an invite to duel in Room <span className="text-[#00FF00] font-bold">#{roomId}</span>. Please configure your Operator callsign and region to enter the arena.
+                Authentication verified for <span className="text-white font-bold">{accountProfile?.email || firebaseUser?.email || 'Operator'}</span>. Please configure your competition handle, nationality, and region in the profile initialization dashboard to become eligible for 1v1 match <span className="text-[#00FF00] font-bold">#{roomId}</span>.
               </p>
             </div>
 
-            <div className="p-4 bg-black/60 border border-white/10 space-y-2.5 text-xs">
+            <div className="p-4 bg-black/60 border border-white/10 space-y-2.5 text-xs font-mono">
               <div className="flex items-center justify-between text-zinc-400">
                 <span className="font-bold uppercase">TARGET ARENA:</span>
-                <span className="text-white font-mono font-bold">ROOM #{roomId}</span>
+                <span className="text-white font-bold">ROOM #{roomId}</span>
               </div>
               <div className="flex items-center justify-between text-zinc-400">
-                <span className="font-bold uppercase">MATCH FORMAT:</span>
-                <span className="text-[#00FF00] font-mono font-bold">1v1 REAL-TIME DUEL</span>
+                <span className="font-bold uppercase">AUTHENTICATED USER:</span>
+                <span className="text-[#00FF00] font-bold truncate max-w-[200px]">
+                  {accountProfile?.email || firebaseUser?.email || 'Operator'}
+                </span>
               </div>
               <div className="flex items-center justify-between text-zinc-400">
-                <span className="font-bold uppercase">GATEWAY STATUS:</span>
-                <span className="text-amber-400 font-mono font-bold">AWAITING OPERATOR INITIALIZATION</span>
+                <span className="font-bold uppercase">ONBOARDING STEP:</span>
+                <span className="text-amber-400 font-bold">CALLSIGN & REGION CONFIGURATION</span>
               </div>
             </div>
 
@@ -1181,14 +1299,14 @@ export function Arena() {
                 className="w-full py-3.5 bg-[#00FF00] hover:bg-[#00DD00] text-black font-black uppercase tracking-widest text-xs font-mono flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,255,0,0.3)] transition-all cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>CONFIGURE PROFILE & PLAY MATCH</span>
+                <span>INITIALIZE PROFILE DASHBOARD & PLAY MATCH</span>
               </button>
 
               <button
                 onClick={() => navigate('/')}
                 className="w-full py-2.5 bg-black hover:bg-white/5 border border-white/15 text-zinc-400 hover:text-white font-bold uppercase tracking-wider text-[11px] font-mono transition-colors cursor-pointer"
               >
-                RETURN TO HOME
+                RETURN TO LOBBY
               </button>
             </div>
           </div>

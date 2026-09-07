@@ -44,7 +44,13 @@ export function GlobalActivity() {
         setOnlineUsers(data.onlineUsers ?? 1);
         setSubmissionsPerMin(data.submissionsPerMin ?? 0);
         setSolveRate(data.solveRate ?? 0);
-        setRecentEvents(data.recentEvents || []);
+        setRecentEvents((data.recentEvents || []).filter((evt: MatchEvent) => {
+          const w = (evt.winner || '').toLowerCase();
+          const l = (evt.loser || '').toLowerCase();
+          const hasBot = w.includes('bot') || w.includes('cyberronin') || w.includes('quantumcoder') || w.includes('bytehacker') ||
+                          l.includes('bot') || l.includes('cyberronin') || l.includes('quantumcoder') || l.includes('bytehacker');
+          return !hasBot;
+        }));
       }
     } catch (err) {
       console.warn('Telemetry update unavailable:', err);

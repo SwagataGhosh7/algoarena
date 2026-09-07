@@ -27,6 +27,24 @@ interface LobbyOperatorsListProps {
 
 type PresenceFilter = 'ALL' | 'ONLINE' | 'IN_MATCH' | 'IDLE';
 
+function isBotUser(name: string, isBotFlag?: boolean): boolean {
+  if (isBotFlag) return true;
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  return (
+    n === 'cyberronin' ||
+    n.includes('cyberronin') ||
+    n === 'algoarena bot' ||
+    n.includes('algoarena bot') ||
+    n.includes('[mentor]') ||
+    n === 'quantumcoder' ||
+    n.includes('quantumcoder') ||
+    n === 'bytehacker' ||
+    n.includes('bytehacker') ||
+    n.includes('bot')
+  );
+}
+
 export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps) {
   const [operators, setOperators] = useState<ActiveLobbyUser[]>([]);
   const [search, setSearch] = useState('');
@@ -42,7 +60,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
       const res = await fetch(apiUrl('/api/lobby-operators'));
       if (res.ok) {
         const data = await res.json();
-        setOperators(data.operators || []);
+        setOperators((data.operators || []).filter((op: ActiveLobbyUser) => !op.isBot && !isBotUser(op.username, op.isBot)));
       }
     } catch (err) {
       console.warn('Could not fetch lobby operators:', err);
@@ -63,7 +81,7 @@ export function LobbyOperatorsList({ currentUsername }: LobbyOperatorsListProps)
 
     const handleUpdate = (data: { operators: ActiveLobbyUser[] }) => {
       if (Array.isArray(data.operators)) {
-        setOperators(data.operators);
+        setOperators(data.operators.filter((op: ActiveLobbyUser) => !op.isBot && !isBotUser(op.username, op.isBot)));
       }
     };
 

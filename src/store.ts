@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User, UserProfileData } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { apiUrl } from './api';
+import { auth, onAuthStateChanged, signOut, type FirebaseUser } from './lib/firebase';
 
 export interface UserAccountProfile {
   uid: string;
@@ -18,6 +19,7 @@ export interface UserAccountProfile {
 interface AppState {
   currentUser: Pick<User, 'id' | 'name'>;
   accountProfile: UserAccountProfile | null;
+  firebaseUser: FirebaseUser | null;
   pendingRoomId: string | null;
   isAuthModalOpen: boolean;
   isProfileSetupOpen: boolean;
@@ -95,6 +97,7 @@ const getInitialPendingRoom = (): string | null => {
 export const useStore = create<AppState>((set, get) => ({
   currentUser: getStoredUser(),
   accountProfile: loadStoredProfile(),
+  firebaseUser: null,
   pendingRoomId: getInitialPendingRoom(),
   isAuthModalOpen: false,
   isProfileSetupOpen: false,
@@ -166,19 +169,22 @@ export const useStore = create<AppState>((set, get) => ({
   setAuthLoading: (loading: boolean) => set({ authLoading: loading }),
 
   saveProfileAndSync: async (data: Partial<UserAccountProfile>) => {
-    const current = get().accountProfile || {
-      uid: uuidv4(),
-      name: '',
-      username: '',
-      email: '',
-      nationality: 'United States',
-      region: 'North America',
-      photoURL: '',
-      isSetupComplete: false,
-    };
+    const current = get().accountProfile;
+    const fbUser = get().firebaseUser || auth.currentUser;
+    const resolvedUid = current?.uid || fbUser?.uid;
+
+    if (!resolvedUid) {
+      throw new Error('Firebase authentication required before initializing profile.');
+    }
 
     const fullProfile: UserAccountProfile = {
-      ...current,
+      uid: resolvedUid,
+      name: current?.name || fbUser?.displayName || data.name || '',
+      username: data.username || current?.username || '',
+      email: current?.email || fbUser?.email || data.email || '',
+      nationality: data.nationality || current?.nationality || 'United States',
+      region: data.region || current?.region || 'North America',
+      photoURL: data.photoURL || current?.photoURL || fbUser?.photoURL || '',
       ...data,
       isSetupComplete: true,
     };
@@ -211,10 +217,12 @@ export const useStore = create<AppState>((set, get) => ({
 
   logout: () => {
     try {
+      signOut(auth).catch(() => {});
       localStorage.removeItem(STORAGE_PROFILE_KEY);
       localStorage.removeItem('algoarena_username');
     } catch {}
     set({
+      firebaseUser: null,
       accountProfile: null,
       currentUser: {
         id: uuidv4(),
@@ -224,4 +232,55 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 }));
+
+// Initialize Firebase auth observer
+if (typeof window !== 'undefined') {
+  onAuthStateChanged(auth, (fbUser) => {
+    if (fbUser) {
+      const stored = loadStoredProfile();
+      if (stored && stored.uid === fbUser.uid && stored.isSetupComplete) {
+        useStore.setState({
+          firebaseUser: fbUser,
+          accountProfile: stored,
+          currentUser: {
+            id: fbUser.uid,
+            name: stored.username || stored.name || fbUser.displayName || 'Duelist',
+          },
+          authLoading: false,
+        });
+      } else {
+        const generatedUsername = fbUser.displayName?.toLowerCase().replace(/[^a-z0-9_]/g, '') || fbUser.email?.split('@')[0] || `duelist_${fbUser.uid.slice(0, 5)}`;
+        const partialProfile: UserAccountProfile = {
+          uid: fbUser.uid,
+          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Duelist',
+          username: stored?.username || generatedUsername,
+          email: fbUser.email || '',
+          nationality: stored?.nationality || '',
+          region: stored?.region || '',
+          photoURL: fbUser.photoURL || stored?.photoURL || '',
+          isSetupComplete: Boolean(stored?.isSetupComplete && stored?.nationality && stored?.region),
+        };
+        useStore.setState({
+          firebaseUser: fbUser,
+          accountProfile: partialProfile,
+          currentUser: {
+            id: fbUser.uid,
+            name: partialProfile.username,
+          },
+          authLoading: false,
+        });
+      }
+    } else {
+      useStore.setState({
+        firebaseUser: null,
+        accountProfile: null,
+        currentUser: {
+          id: uuidv4(),
+          name: 'Guest',
+        },
+        authLoading: false,
+      });
+    }
+  });
+}
 

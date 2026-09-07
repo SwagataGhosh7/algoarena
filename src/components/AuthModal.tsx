@@ -9,7 +9,8 @@ import {
   Sparkles, 
   Terminal,
   LogIn,
-  UserPlus
+  UserPlus,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -28,7 +29,8 @@ export function AuthModal() {
     setAuthModalOpen, 
     setAccountProfile, 
     setProfileSetupOpen,
-    accountProfile 
+    accountProfile,
+    pendingRoomId
   } = useStore();
 
   const [mode, setMode] = useState<'signin' | 'register'>('signin');
@@ -194,6 +196,21 @@ export function AuthModal() {
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Pending Match Code Invitation Notice */}
+        {pendingRoomId && (
+          <div className="p-3 bg-gradient-to-r from-[#00FF00]/15 via-emerald-950/30 to-black border-b border-[#00FF00]/30 flex items-center gap-2.5 shrink-0">
+            <Zap className="w-4 h-4 text-[#00FF00] animate-pulse shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-black text-[#00FF00] uppercase font-mono tracking-wider truncate">
+                MATCH CODE INVITE: ROOM #{pendingRoomId}
+              </div>
+              <div className="text-[10px] text-zinc-300 font-mono">
+                Authenticate with Google or Email to verify credentials for this 1v1 duel.
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="p-6 space-y-5">
           {error && (

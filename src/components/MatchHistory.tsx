@@ -38,7 +38,6 @@ interface MatchHistoryProps {
   onSelectPlayback?: (match: MatchRecord) => void;
   onSelectReview?: (match: MatchRecord) => void;
   onSelectDiff?: (match: MatchRecord) => void;
-  onSeedSample?: () => void;
 }
 
 type OutcomeFilter = 'ALL' | 'VICTORY' | 'DEFEAT';
@@ -69,7 +68,7 @@ function getLanguageBadge(language?: string) {
   return { name: language || 'TypeScript', bg: 'bg-zinc-800 text-zinc-300 border-white/20' };
 }
 
-export function MatchHistory({ matches = [], username, onSelectPlayback, onSelectReview, onSelectDiff, onSeedSample }: MatchHistoryProps) {
+export function MatchHistory({ matches = [], username, onSelectPlayback, onSelectReview, onSelectDiff }: MatchHistoryProps) {
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('ALL');
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -336,19 +335,8 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
             />
           </div>
 
-          {/* Sort Selector & Benchmark Button */}
+          {/* Sort Selector */}
           <div className="flex items-center gap-2">
-            {onSeedSample && (
-              <button
-                onClick={onSeedSample}
-                title="Load sample practice duel sessions"
-                className="px-2.5 py-1 bg-black border border-white/15 hover:border-[#00FF00] text-zinc-400 hover:text-[#00FF00] text-[10px] font-bold uppercase flex items-center gap-1 transition-all cursor-pointer"
-              >
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span className="hidden md:inline">BENCHMARK DATA</span>
-              </button>
-            )}
-
             <span className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1">
               <ArrowUpDown className="w-3 h-3 text-zinc-400" /> SORT:
             </span>
@@ -534,20 +522,9 @@ export function MatchHistory({ matches = [], username, onSelectPlayback, onSelec
                           <>
                             <p className="font-bold text-zinc-300">NO 1V1 DUEL SESSIONS RECORDED YET</p>
                             <p className="text-[10px] text-zinc-600 mt-1 mb-3">
-                              ENTER THE ARENA TO COMMENCE YOUR FIRST MATCH OR LOAD BENCHMARK PRACTICE DUELS
+                              ENTER THE ARENA TO COMMENCE YOUR FIRST MATCH AND RECORD AUTHENTIC DUEL TELEMETRY
                             </p>
                             <div className="flex items-center justify-center gap-2">
-                              {onSeedSample && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSeedSample();
-                                  }}
-                                  className="px-3 py-1.5 bg-[#00FF00]/20 text-[#00FF00] border border-[#00FF00]/40 font-mono text-[10px] font-black uppercase hover:bg-[#00FF00]/30 transition-all cursor-pointer"
-                                >
-                                  <Sparkles className="w-3 h-3 inline mr-1" /> LOAD PRACTICE / SAMPLE DUELS
-                                </button>
-                              )}
                               <a
                                 href="/"
                                 className="px-3 py-1.5 bg-black border border-white/20 text-zinc-300 font-mono text-[10px] font-black uppercase hover:border-[#00FF00] hover:text-white transition-all"

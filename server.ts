@@ -1419,12 +1419,30 @@ interface UserProfileData {
 const userProfiles = new Map<string, UserProfileData>();
 let globalIo: SocketIOServer | null = null;
 
-// In-memory global match feed with real event history
-const globalMatchFeed: MatchEvent[] = [
-  { id: '1', time: 'Just now', winner: 'GeminiSentinel', loser: 'PixelGhost', problem: 'Subtree Inversion Matrix', eloChange: '+32 ELO', tests: '5/5' },
-  { id: '2', time: '2m ago', winner: 'CyberRonin', loser: 'QuantumCoder', problem: 'Dynamic Island Count', eloChange: '+28 ELO', tests: '5/5' },
-  { id: '3', time: '5m ago', winner: 'NeuralHacker', loser: 'ByteMaster', problem: 'LRU Cache Eviction', eloChange: '+25 ELO', tests: '4/4' },
-];
+// In-memory global match feed with real event history (authentic human duels only)
+const globalMatchFeed: MatchEvent[] = [];
+
+function isBotOpponent(opponentName?: string, isBotFlag?: boolean): boolean {
+  if (isBotFlag) return true;
+  if (!opponentName) return false;
+  const lower = opponentName.trim().toLowerCase();
+  return (
+    lower === 'algoarena bot' ||
+    lower.includes('algoarena bot') ||
+    lower.includes('[mentor]') ||
+    lower === 'cyberronin' ||
+    lower.includes('cyberronin') ||
+    lower === 'quantumcoder' ||
+    lower.includes('quantumcoder') ||
+    lower === 'bytehacker' ||
+    lower.includes('bytehacker') ||
+    lower === 'geminisentinel' ||
+    lower === 'pixelghost' ||
+    lower.endsWith('bot') ||
+    lower.startsWith('bot-') ||
+    lower.includes('ai bot')
+  );
+}
 
 function calculateRank(elo: number): string {
   return `${elo} ELO`;
@@ -1436,15 +1454,49 @@ function parseDurationSeconds(duration: string): number {
   return Number(minutes) * 60 + Number(seconds);
 }
 
+const CORE_SUBJECTS = [
+  'Arrays',
+  'Graphs',
+  'Dynamic Prog.',
+  'Trees',
+  'Bit Manip.',
+  'Math & Number'
+];
+
+function calculateCompetenciesFromMatches(matches: MatchRecord[] = []): CompetencyTopic[] {
+  return CORE_SUBJECTS.map(subject => {
+    const subjectMatches = matches.filter(m => {
+      const prob = (m.problem || '').toLowerCase();
+      if (subject === 'Arrays') return prob.includes('array') || prob.includes('sum') || prob.includes('subsegment') || prob.includes('sliding');
+      if (subject === 'Graphs') return prob.includes('graph') || prob.includes('island') || prob.includes('topological') || prob.includes('path') || prob.includes('cycle');
+      if (subject === 'Dynamic Prog.') return prob.includes('dynamic') || prob.includes('subsequence') || prob.includes('knapsack') || prob.includes('palindrome');
+      if (subject === 'Trees') return prob.includes('tree') || prob.includes('binary') || prob.includes('ancestor') || prob.includes('subtree');
+      if (subject === 'Bit Manip.') return prob.includes('bit') || prob.includes('xor') || prob.includes('mask');
+      if (subject === 'Math & Number') return prob.includes('math') || prob.includes('prime') || prob.includes('number') || prob.includes('modular') || prob.includes('matrix');
+      return false;
+    });
+
+    const totalAttempted = subjectMatches.length;
+    const victories = subjectMatches.filter(m => m.outcome === 'Victory');
+    const solvedCount = victories.length;
+    const winRate = totalAttempted > 0 ? Math.round((solvedCount / totalAttempted) * 100) : 0;
+    const score = totalAttempted === 0 ? 0 : Math.min(150, Math.round(solvedCount * 30 + (winRate * 0.5)));
+    const percentage = Math.round((score / 150) * 100);
+
+    return {
+      subject,
+      score,
+      fullMark: 150,
+      tier: `${percentage}%`,
+      solvedCount,
+      winRate,
+      benchmark: 90,
+    };
+  });
+}
+
 function getInitialCompetencies(): CompetencyTopic[] {
-  return [
-    { subject: 'Arrays', score: 110, fullMark: 150, solvedCount: 14, winRate: 75 },
-    { subject: 'Graphs', score: 90, fullMark: 150, solvedCount: 9, winRate: 65 },
-    { subject: 'Dynamic Prog.', score: 85, fullMark: 150, solvedCount: 8, winRate: 60 },
-    { subject: 'Trees', score: 98, fullMark: 150, solvedCount: 11, winRate: 70 },
-    { subject: 'Bit Manip.', score: 75, fullMark: 150, solvedCount: 6, winRate: 55 },
-    { subject: 'Math & Number', score: 80, fullMark: 150, solvedCount: 7, winRate: 58 },
-  ];
+  return calculateCompetenciesFromMatches([]);
 }
 
 function seedInitialProfiles() {
@@ -1458,96 +1510,24 @@ function getOrCreateUserProfile(rawUsername: string): UserProfileData {
   const key = username.toLowerCase();
   
   if (!userProfiles.has(key)) {
-    const starterMatches: MatchRecord[] = [
-      {
-        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
-        opponent: 'AlgoArena Bot [Mentor]',
-        opponentRank: '2450 ELO',
-        outcome: 'Victory',
-        problem: 'Dynamic Island Count & Matrix Traversal',
-        difficulty: 'Medium',
-        duration: '09m 24s',
-        language: 'TypeScript',
-        eloChange: 28,
-        testScore: '5/5 (100%)',
-        date: 'Today',
-        timestamp: '14:20:00',
-        completedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      },
-      {
-        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
-        opponent: 'CyberRonin',
-        opponentRank: '2100 ELO',
-        outcome: 'Victory',
-        problem: 'Topological Task Graph Scheduling',
-        difficulty: 'Hard',
-        duration: '14m 12s',
-        language: 'Python',
-        eloChange: 36,
-        testScore: '5/5 (100%)',
-        date: 'Yesterday',
-        timestamp: '18:45:00',
-        completedAt: new Date(Date.now() - 1000 * 60 * 60 * 22).toISOString(),
-      },
-      {
-        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
-        opponent: 'QuantumCoder',
-        opponentRank: '1950 ELO',
-        outcome: 'Defeat',
-        problem: 'Invert Binary Subtree Matrix',
-        difficulty: 'Medium',
-        duration: '11m 05s',
-        language: 'C++',
-        eloChange: -18,
-        testScore: '3/5 (60%)',
-        date: '2d ago',
-        timestamp: '11:10:00',
-        completedAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-      },
-      {
-        id: `MT-${Math.floor(1000 + Math.random() * 9000)}`,
-        opponent: 'ByteHacker',
-        opponentRank: '1420 ELO',
-        outcome: 'Victory',
-        problem: 'Two Sum Target Complement Hash',
-        difficulty: 'Easy',
-        duration: '04m 18s',
-        language: 'Go',
-        eloChange: 20,
-        testScore: '5/5 (100%)',
-        date: '3d ago',
-        timestamp: '09:15:00',
-        completedAt: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
-      },
-    ];
-
     const initialProfile: UserProfileData = {
       username,
       name: username,
       friends: [],
       incomingFriendRequests: [],
       outgoingFriendRequests: [],
-      elo: 1266,
-      rankTitle: '1266 ELO',
-      peakElo: 1284,
-      wins: 3,
-      losses: 1,
-      streak: 1,
-      testAccuracy: 90,
-      totalDuels: 4,
-      preferredLanguages: [
-        { language: 'TypeScript', percentage: 50, color: '#00FF00' },
-        { language: 'Python', percentage: 25, color: '#3b82f6' },
-        { language: 'C++', percentage: 25, color: '#f59e0b' },
-      ],
-      honors: ['INITIATE OPERATOR', 'ARENA DUELIST'],
+      elo: 1200,
+      rankTitle: '1200 ELO',
+      peakElo: 1200,
+      wins: 0,
+      losses: 0,
+      streak: 0,
+      testAccuracy: 0,
+      totalDuels: 0,
+      preferredLanguages: [],
+      honors: ['INITIATE OPERATOR'],
       competencies: getInitialCompetencies(),
-      matches: starterMatches,
-      aiAssessment: {
-        tacticalCritique: 'Operator demonstrates high structural accuracy in graph and matrix traversal, with fast TypeScript and Python implementations.',
-        focusRecommendation: 'Calibrate tree inversion recursion and bitmask optimizations to push above 1800 ELO.',
-        lastAudited: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      },
+      matches: [],
     };
     userProfiles.set(key, initialProfile);
   }
@@ -1676,21 +1656,29 @@ function updateProfileWithMatch(
   profile.matches.unshift(newMatchRecord);
   if (profile.matches.length > 25) profile.matches.pop();
 
-  // Add to global match feed
-  const feedEvent: MatchEvent = {
-    id: uuidv4(),
-    time: 'Just now',
-    winner: match.outcome === 'Victory' ? username : match.opponent,
-    loser: match.outcome === 'Victory' ? match.opponent : username,
-    problem: match.problem,
-    eloChange: `+${Math.abs(eloDelta)} ELO`,
-    tests: `${match.passedCount}/${match.totalTests}`,
-  };
-  globalMatchFeed.unshift(feedEvent);
-  if (globalMatchFeed.length > 30) globalMatchFeed.pop();
+  // Recompute dynamic competency radar scores strictly based on real match history
+  profile.competencies = calculateCompetenciesFromMatches(profile.matches);
+
+  // Add to global live telemetry match feed ONLY if duel is between authentic human operators
+  // (strictly exclude bot beating users, users beating bots, or bots beating bots)
+  const isBotInvolved = isBotOpponent(match.opponent, (match as any).isBot) || isBotOpponent(username);
+  if (!isBotInvolved) {
+    const feedEvent: MatchEvent = {
+      id: uuidv4(),
+      time: 'Just now',
+      winner: match.outcome === 'Victory' ? username : match.opponent,
+      loser: match.outcome === 'Victory' ? match.opponent : username,
+      problem: match.problem,
+      eloChange: `+${Math.abs(eloDelta)} ELO`,
+      tests: `${match.passedCount}/${match.totalTests}`,
+    };
+    globalMatchFeed.unshift(feedEvent);
+    if (globalMatchFeed.length > 30) globalMatchFeed.pop();
+  }
 
   if (globalIo) {
     globalIo.emit('leaderboard_update', { timestamp: Date.now() });
+    globalIo.emit('global_telemetry_update', { timestamp: Date.now() });
   }
 
   return profile;
@@ -1806,27 +1794,6 @@ async function startServer() {
             isBot: false,
           });
         }
-      }
-    }
-
-    // Default sparring opponents with diverse presence states so lobby is always populated with available, in-match, and idle contenders
-    const defaultDuelists: Array<{
-      socketId: string;
-      username: string;
-      elo: number;
-      status: 'online' | 'in-match' | 'idle';
-      lastSeen: number;
-      isBot: boolean;
-    }> = [
-      { socketId: 'bot-cyber-ronin', username: 'CyberRonin', elo: 2100, status: 'online', lastSeen: Date.now(), isBot: true },
-      { socketId: 'bot-algoarena-bot', username: 'AlgoArena Bot [Mentor]', elo: 2400, status: 'online', lastSeen: Date.now(), isBot: true },
-      { socketId: 'bot-quantum-coder', username: 'QuantumCoder', elo: 1950, status: 'in-match', lastSeen: Date.now(), isBot: true },
-      { socketId: 'bot-byte-hacker', username: 'ByteHacker', elo: 1420, status: 'idle', lastSeen: Date.now() - 300000, isBot: true },
-    ];
-
-    for (const d of defaultDuelists) {
-      if (!seenNames.has(d.username.toLowerCase())) {
-        list.push(d);
       }
     }
 
@@ -1957,14 +1924,22 @@ async function startServer() {
 
       const currentUserNameLower = currentUser?.trim().toLowerCase();
       const minimumGames = 5;
+
+      // Count ONLY human vs human duels for leaderboard eligibility (playing bots does NOT qualify)
+      const getHumanDuelsCount = (p: UserProfileData) => {
+        return (p.matches || []).filter(m => !isBotOpponent(m.opponent, (m as any).isBot)).length;
+      };
+
       const currentProfile = currentUserNameLower ? userProfiles.get(currentUserNameLower) : undefined;
-      const currentUserGames = currentProfile?.totalDuels || 0;
+      const currentUserHumanGames = currentProfile ? getHumanDuelsCount(currentProfile) : 0;
       const isFriendsScope = scope === 'friends';
       const friendNames = new Set((currentProfile?.friends || []).map(name => name.toLowerCase()));
 
       // Transform user profiles into structured leaderboard entries
+      // Strictly exclude bots from ranking and require at least 5 authentic 1v1 human duels
       const allEntries = Array.from(userProfiles.values())
-        .filter(p => (p.totalDuels || 0) >= minimumGames)
+        .filter(p => !isBotOpponent(p.username))
+        .filter(p => getHumanDuelsCount(p) >= minimumGames)
         .filter(p => !isFriendsScope || p.username.toLowerCase() === currentUserNameLower || friendNames.has(p.username.toLowerCase()))
         .map(p => {
         const total = p.totalDuels || (p.wins + p.losses);
@@ -2075,8 +2050,9 @@ async function startServer() {
           totalRanked: allEntries.length,
           scope: isFriendsScope ? 'friends' : 'global',
           minimumGames,
-          currentUserGames,
-          isEligible: currentUserGames >= minimumGames,
+          currentUserGames: currentUserHumanGames,
+          isEligible: currentUserHumanGames >= minimumGames,
+          botMatchesExcluded: true,
           friendCount: currentProfile?.friends?.length || 0,
           season: 'SEASON 04: NEON MATRIX',
           seasonEndsIn: '14D 06H 18M',

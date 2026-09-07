@@ -41,6 +41,19 @@ export function Home() {
   const [practiceDiff, setPracticeDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [practiceLang, setPracticeLang] = useState('c');
   const [activeFeedTab, setActiveFeedTab] = useState<'leaderboard' | 'telemetry' | 'operators'>('leaderboard');
+  const [matchCodeInput, setMatchCodeInput] = useState('');
+  const [matchCodeError, setMatchCodeError] = useState('');
+
+  const handleJoinWithCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanCode = matchCodeInput.trim().replace(/^#/, '');
+    if (!cleanCode) {
+      setMatchCodeError('Please enter an invite match code.');
+      return;
+    }
+    setMatchCodeError('');
+    navigate(`/room/${cleanCode}`);
+  };
 
   const handleQuickMatch = () => {
     const roomId = uuidv4().substring(0, 8);
@@ -234,6 +247,52 @@ export function Home() {
             }}
             accent
           />
+        </motion.div>
+
+        {/* Join 1v1 Match via Invite Code */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.35 }}
+          className="w-full mt-6 bg-[#0c0c0c] border border-white/10 hover:border-[#00FF00]/40 p-4 sm:p-5 font-mono transition-colors"
+        >
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-black text-[#00FF00] uppercase tracking-wider">
+                <Zap className="w-4 h-4 text-[#00FF00] animate-pulse" />
+                <span>HAVE A MATCH CODE? ENTER INVITED 1V1 DUEL</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 font-mono">
+                Enter your friend's 8-character duel key. New operators will be prompted to authenticate & initialize their profile before entering combat.
+              </p>
+            </div>
+
+            <form onSubmit={handleJoinWithCode} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Enter Match Code (e.g. 7f9a2e1c)"
+                  value={matchCodeInput}
+                  onChange={(e) => {
+                    setMatchCodeInput(e.target.value);
+                    if (matchCodeError) setMatchCodeError('');
+                  }}
+                  className="w-full sm:w-64 bg-black border border-white/20 focus:border-[#00FF00] px-3.5 py-2 text-xs text-white placeholder:text-zinc-600 font-mono uppercase tracking-wider outline-none transition-colors"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-[#00FF00] hover:bg-[#00DD00] text-black font-black text-xs uppercase tracking-wider transition-all shadow-[0_0_12px_rgba(0,255,0,0.25)] hover:shadow-[0_0_20px_rgba(0,255,0,0.4)] cursor-pointer"
+              >
+                JOIN 1V1 MATCH
+              </button>
+            </form>
+          </div>
+          {matchCodeError && (
+            <div className="mt-2 text-[11px] text-red-400 font-mono">
+              {matchCodeError}
+            </div>
+          )}
         </motion.div>
 
         {/* Dynamic Section: Leaderboard / Global Activity Switcher */}

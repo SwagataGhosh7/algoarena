@@ -57,7 +57,9 @@ export function ProfileSetupModal() {
   const { 
     isProfileSetupOpen, 
     setProfileSetupOpen, 
+    setAuthModalOpen,
     accountProfile, 
+    firebaseUser,
     saveProfileAndSync,
     pendingRoomId,
     setPendingRoomId
@@ -90,6 +92,16 @@ export function ProfileSetupModal() {
   };
 
   useEffect(() => {
+    if (!isProfileSetupOpen) return;
+
+    // Strict security guard: must be authenticated via Firebase first
+    const isAuthed = Boolean(firebaseUser || accountProfile?.uid);
+    if (!isAuthed) {
+      setProfileSetupOpen(false);
+      setAuthModalOpen(true);
+      return;
+    }
+
     if (accountProfile) {
       setName(accountProfile.name || '');
       setUsername(accountProfile.username || '');
@@ -98,11 +110,11 @@ export function ProfileSetupModal() {
       setRegion(accountProfile.region || 'North America');
       setPhotoURL(accountProfile.photoURL || '');
       setPreviewURL(accountProfile.photoURL || '');
-    } else if (isProfileSetupOpen && !username) {
+    } else if (!username) {
       // Pre-seed with random callsign for instant mobile setup
       generateRandomCallsign();
     }
-  }, [accountProfile, isProfileSetupOpen]);
+  }, [accountProfile, firebaseUser, isProfileSetupOpen, setProfileSetupOpen, setAuthModalOpen]);
 
   if (!isProfileSetupOpen) return null;
 

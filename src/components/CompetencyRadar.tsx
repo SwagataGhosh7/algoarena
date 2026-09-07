@@ -21,13 +21,13 @@ export interface CompetencyTopic {
   benchmark?: number;
 }
 
-const DEFAULT_TOPICS: CompetencyTopic[] = [
-  { subject: 'Arrays', score: 128, fullMark: 150, tier: '85%', solvedCount: 42, winRate: 78, benchmark: 95 },
-  { subject: 'Graphs', score: 94, fullMark: 150, tier: '63%', solvedCount: 26, winRate: 65, benchmark: 85 },
-  { subject: 'Dynamic Prog.', score: 112, fullMark: 150, tier: '75%', solvedCount: 35, winRate: 71, benchmark: 90 },
-  { subject: 'Trees', score: 104, fullMark: 150, tier: '69%', solvedCount: 30, winRate: 69, benchmark: 88 },
-  { subject: 'Bit Manip.', score: 82, fullMark: 150, tier: '55%', solvedCount: 18, winRate: 58, benchmark: 75 },
-  { subject: 'Math & Logic', score: 76, fullMark: 150, tier: '51%', solvedCount: 15, winRate: 54, benchmark: 80 },
+const BASELINE_EMPTY_TOPICS: CompetencyTopic[] = [
+  { subject: 'Arrays', score: 0, fullMark: 150, tier: '0%', solvedCount: 0, winRate: 0, benchmark: 95 },
+  { subject: 'Graphs', score: 0, fullMark: 150, tier: '0%', solvedCount: 0, winRate: 0, benchmark: 85 },
+  { subject: 'Dynamic Prog.', score: 0, fullMark: 150, tier: '0%', solvedCount: 0, winRate: 0, benchmark: 90 },
+  { subject: 'Trees', score: 0, fullMark: 150, tier: '0%', solvedCount: 0, winRate: 0, benchmark: 88 },
+  { subject: 'Bit Manip.', score: 0, fullMark: 150, tier: '0%', solvedCount: 0, winRate: 0, benchmark: 75 },
+  { subject: 'Math & Logic', score: 0, fullMark: 150, tier: '0%', solvedCount: 0, winRate: 0, benchmark: 80 },
 ];
 
 // Topic specific advice mapping
@@ -49,7 +49,7 @@ interface CompetencyRadarProps {
 
 export function CompetencyRadar({ 
   username = 'OPERATOR', 
-  data = DEFAULT_TOPICS,
+  data,
   accentColor = '#00FF00'
 }: CompetencyRadarProps) {
   const [showBenchmark, setShowBenchmark] = useState(true);
@@ -57,7 +57,8 @@ export function CompetencyRadar({
 
   // Normalize data with default benchmark ratings if missing
   const topicList = useMemo(() => {
-    return (data && data.length > 0 ? data : DEFAULT_TOPICS).map(item => {
+    const rawList = data && data.length > 0 ? data : BASELINE_EMPTY_TOPICS;
+    return rawList.map(item => {
       // Normalizing subject label if needed
       const cleanSubject = item.subject === 'Math & Number' ? 'Math & Logic' : item.subject;
       const benchmarkScore = item.benchmark || (
@@ -75,6 +76,10 @@ export function CompetencyRadar({
       };
     });
   }, [data]);
+
+  const hasCalibratedData = useMemo(() => {
+    return topicList.some(t => t.score > 0 || t.solvedCount > 0);
+  }, [topicList]);
 
   // Active highlighted topic
   const activeTopic = useMemo(() => {
@@ -130,10 +135,17 @@ export function CompetencyRadar({
           </button>
 
           <div className="bg-[#00FF00]/10 text-[#00FF00] text-xs px-2.5 py-1 border border-[#00FF00]/30 font-mono font-black">
-            {overallPercentage}% MASTERY
+            {hasCalibratedData ? `${overallPercentage}% MASTERY` : 'UNCALIBRATED // 0%'}
           </div>
         </div>
       </div>
+
+      {!hasCalibratedData && (
+        <div className="mb-2 p-2 bg-black/60 border border-amber-500/30 text-amber-400 font-mono text-[10px] flex items-center gap-2">
+          <Info className="w-3.5 h-3.5 shrink-0" />
+          <span>AWAITING COMBAT TELEMETRY: Compete in 1v1 ranked duels to calibrate your authentic competency radar.</span>
+        </div>
+      )}
 
       {/* Radar Chart Visual with Recharts */}
       <div className="relative w-full h-[270px] min-h-[270px] my-1">
