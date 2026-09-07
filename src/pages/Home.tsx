@@ -18,12 +18,15 @@ import {
   LogIn,
   LogOut,
   ShieldCheck,
-  Edit3
+  Edit3,
+  Eye,
+  Tv
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlobalActivity } from '../components/GlobalActivity';
 import { Leaderboard } from '../components/Leaderboard';
 import { LobbyOperatorsList } from '../components/LobbyOperatorsList';
+import { LiveSpectateList } from '../components/LiveSpectateList';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SoundToggle } from '../components/SoundToggle';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
@@ -41,7 +44,7 @@ export function Home() {
   const [practiceTopic, setPracticeTopic] = useState('Dynamic Programming');
   const [practiceDiff, setPracticeDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [practiceLang, setPracticeLang] = useState('c');
-  const [activeFeedTab, setActiveFeedTab] = useState<'leaderboard' | 'telemetry' | 'operators'>('leaderboard');
+  const [activeFeedTab, setActiveFeedTab] = useState<'leaderboard' | 'telemetry' | 'operators' | 'spectate'>('leaderboard');
   const [matchCodeInput, setMatchCodeInput] = useState('');
   const [matchCodeError, setMatchCodeError] = useState('');
 
@@ -82,6 +85,18 @@ export function Home() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => {
+              setActiveFeedTab('spectate');
+              const el = document.getElementById('rankings-feed');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="flex items-center gap-1.5 bg-[#080808] border border-[#00FF00]/40 hover:border-[#00FF00] px-3 py-1.5 cursor-pointer transition-all group font-mono text-xs font-bold uppercase text-zinc-300 hover:text-white"
+          >
+            <Eye className="w-3.5 h-3.5 text-[#00FF00] group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">SPECTATE LIVE</span>
+          </button>
+
           <button 
             onClick={() => {
               setActiveFeedTab('leaderboard');
@@ -297,6 +312,18 @@ export function Home() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3 mb-6 font-mono">
             <div className="flex flex-wrap items-center gap-2">
               <button
+                onClick={() => setActiveFeedTab('spectate')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase transition-all cursor-pointer border ${
+                  activeFeedTab === 'spectate'
+                    ? 'bg-[#00FF00] text-black border-[#00FF00] shadow-[0_0_12px_rgba(0,255,0,0.3)]'
+                    : 'bg-[#0c0c0c] text-zinc-400 border-white/10 hover:border-white/30 hover:text-white'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>SPECTATE LIVE DUELS</span>
+              </button>
+
+              <button
                 onClick={() => setActiveFeedTab('leaderboard')}
                 className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase transition-all cursor-pointer border ${
                   activeFeedTab === 'leaderboard'
@@ -340,7 +367,12 @@ export function Home() {
           </div>
 
           {/* Active View */}
-          {activeFeedTab === 'leaderboard' ? (
+          {activeFeedTab === 'spectate' ? (
+            <LiveSpectateList 
+              onQuickMatch={handleQuickMatch} 
+              onPracticeWithBot={() => setShowPracticeModal(true)} 
+            />
+          ) : activeFeedTab === 'leaderboard' ? (
             <Leaderboard embedded />
           ) : activeFeedTab === 'telemetry' ? (
             <GlobalActivity />

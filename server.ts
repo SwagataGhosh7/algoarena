@@ -2256,6 +2256,60 @@ async function startServer() {
     });
   }
 
+  function getLiveDuelsList() {
+    const list: Array<{
+      roomId: string;
+      status: 'waiting' | 'active' | 'finished';
+      mode: 'duel' | 'practice';
+      difficulty: 'easy' | 'medium' | 'hard';
+      topic: string;
+      startTime: number | null;
+      problemTitle?: string;
+      players: Array<{
+        id: string;
+        name: string;
+        avatar?: string;
+        elo?: number;
+        progress: number;
+        ready: boolean;
+        isAi?: boolean;
+      }>;
+      spectatorCount: number;
+    }> = [];
+
+    for (const room of rooms.values()) {
+      const playerList = Object.values(room.users || {}) as any[];
+      const spectatorList = Object.values(room.spectators || {}) as any[];
+      if (playerList.length > 0) {
+        list.push({
+          roomId: room.id,
+          status: room.status,
+          mode: room.mode || 'duel',
+          difficulty: room.difficulty || 'medium',
+          topic: room.topic || 'Random Algorithms',
+          startTime: room.startTime || null,
+          problemTitle: room.problem?.title,
+          players: playerList.map(p => ({
+            id: p.id,
+            name: p.name || 'Duelist',
+            avatar: p.avatar,
+            elo: p.elo || 1200,
+            progress: p.progress || 0,
+            ready: Boolean(p.ready),
+            isAi: Boolean(p.isAi || p.isBot),
+          })),
+          spectatorCount: spectatorList.length,
+        });
+      }
+    }
+
+    return list;
+  }
+
+  function broadcastLiveDuels() {
+    io.emit('live_duels_update', getLiveDuelsList());
+  }
+
   // Global Lobby Chat in-memory authoritative storage
   interface LobbyChatMessage {
     id: string;
@@ -3368,8 +3422,32 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
       }
     });
 
-    socket.on('join_room', ({ roomId, user, mode, topic, difficulty }) => {
+    // Get live duels list for lobby spectate panel
+    socket.on('get_live_duels', (callback) => {
+      if (typeof callback === 'function') {
+        callback(getLiveDuelsList());
+      } else {
+        socket.emit('live_duels_update', getLiveDuelsList());
+      }
+    });
+
+    // Real-time live code update from player to spectators and opponent
+    socket.on('player_code_update', ({ roomId, code, language }) => {
+      const room = rooms.get(roomId);
+      if (!room || !room.users[socket.id]) return;
+      room.users[socket.id].liveCode = typeof code === 'string' ? code : '';
+      room.users[socket.id].liveLanguage = typeof language === 'string' ? language : 'typescript';
+      socket.to(roomId).emit('spectator_code_update', {
+        userId: socket.id,
+        code,
+        language,
+      });
+    });
+
+    socket.on('join_room', ({ roomId, user, mode, topic, difficulty, spectate }) => {
       socket.join(roomId);
+      const isExplicitSpectator = Boolean(spectate);
+
       if (user?.name) {
         const existing = activeSocketUsers.get(socket.id);
         const profile = userProfiles.get(user.name.toLowerCase());
@@ -3380,7 +3458,7 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
           avatar: user.avatar || existing?.avatar || profile?.photoURL,
           lastSeen: Date.now(),
           roomId,
-          status: 'in-match',
+          status: isExplicitSpectator ? 'in-match' : 'in-match',
         });
         broadcastOnlineUsers();
       }
@@ -3393,6 +3471,7 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
         rooms.set(roomId, {
           id: roomId,
           users: {},
+          spectators: {},
           status: 'waiting', // waiting, active, finished
           problem: null,
           startTime: null,
@@ -3404,20 +3483,43 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
 
       const room = rooms.get(roomId);
       if (room) {
-        if (difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase()) && room.status === 'waiting') {
-          room.difficulty = String(difficulty).toLowerCase();
-        }
-        if (topic && room.status === 'waiting') {
-          room.topic = topic;
-        }
-        if (mode && room.status === 'waiting') {
-          room.mode = mode;
-        }
+        if (!room.spectators) room.spectators = {};
 
-        room.users[socket.id] = { ...user, id: socket.id, ready: false, progress: 0 };
+        const existingPlayerCount = Object.keys(room.users || {}).length;
+        // If user explicitly asks to spectate OR room already has 2 active players (and this user isn't one of them):
+        const shouldSpectate = isExplicitSpectator || (existingPlayerCount >= 2 && !room.users[socket.id]);
 
-        io.to(roomId).emit('room_state_update', room);
-        socket.to(roomId).emit('chat_message', { system: true, text: `${user?.name || 'Duelist'} entered arena grid.` });
+        if (shouldSpectate) {
+          room.spectators[socket.id] = {
+            id: socket.id,
+            name: user?.name || 'Observer',
+            avatar: user?.avatar,
+            elo: user?.elo || 1200,
+            joinedAt: Date.now(),
+          };
+          io.to(roomId).emit('room_state_update', room);
+          io.to(roomId).emit('chat_message', { 
+            system: true, 
+            text: `LIVE OBSERVER // ${user?.name || 'Spectator'} connected to real-time feed.` 
+          });
+          broadcastLiveDuels();
+        } else {
+          if (difficulty && ['easy', 'medium', 'hard'].includes(String(difficulty).toLowerCase()) && room.status === 'waiting') {
+            room.difficulty = String(difficulty).toLowerCase();
+          }
+          if (topic && room.status === 'waiting') {
+            room.topic = topic;
+          }
+          if (mode && room.status === 'waiting') {
+            room.mode = mode;
+          }
+
+          room.users[socket.id] = { ...user, id: socket.id, ready: false, progress: 0 };
+
+          io.to(roomId).emit('room_state_update', room);
+          socket.to(roomId).emit('chat_message', { system: true, text: `${user?.name || 'Duelist'} entered arena grid.` });
+          broadcastLiveDuels();
+        }
       }
     });
 
@@ -3426,14 +3528,23 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
       if (targetRoomId) {
         socket.leave(targetRoomId);
         const room = rooms.get(targetRoomId);
-        if (room && room.users[socket.id]) {
-          const leavingUser = room.users[socket.id];
-          delete room.users[socket.id];
-          io.to(targetRoomId).emit('room_state_update', room);
-          io.to(targetRoomId).emit('chat_message', { system: true, text: `${leavingUser.name} left the arena.` });
-          if (Object.keys(room.users).length === 0) {
-            rooms.delete(targetRoomId);
+        if (room) {
+          if (room.users && room.users[socket.id]) {
+            const leavingUser = room.users[socket.id];
+            delete room.users[socket.id];
+            io.to(targetRoomId).emit('room_state_update', room);
+            io.to(targetRoomId).emit('chat_message', { system: true, text: `${leavingUser.name} left the arena.` });
+            if (Object.keys(room.users).length === 0 && (!room.spectators || Object.keys(room.spectators).length === 0)) {
+              rooms.delete(targetRoomId);
+            }
+          } else if (room.spectators && room.spectators[socket.id]) {
+            delete room.spectators[socket.id];
+            io.to(targetRoomId).emit('room_state_update', room);
+            if (Object.keys(room.users || {}).length === 0 && Object.keys(room.spectators || {}).length === 0) {
+              rooms.delete(targetRoomId);
+            }
           }
+          broadcastLiveDuels();
         }
       }
       const existing = activeSocketUsers.get(socket.id);
@@ -3445,10 +3556,17 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
       }
     });
 
-    // Real-time In-Arena Live Chat between matched duelists
+    // Real-time In-Arena Live Chat between matched duelists (Spectators cannot send chat for Fair Play)
     socket.on('send_chat', ({ roomId, text }) => {
       const room = rooms.get(roomId);
       if (!room || !text || typeof text !== 'string' || !text.trim()) return;
+      
+      // Strict Fair Play: Spectators cannot participate in match chat
+      if (room.spectators && room.spectators[socket.id]) {
+        return;
+      }
+      if (!room.users[socket.id]) return;
+
       const user = room.users[socket.id];
       const senderName = user?.name || activeSocketUsers.get(socket.id)?.username || 'Operator';
       const cleanText = text.trim().slice(0, 500);
@@ -3546,6 +3664,7 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
         room.startTime = Date.now();
         io.to(roomId).emit('room_state_update', room);
         io.to(roomId).emit('match_started', problem);
+        broadcastLiveDuels();
 
         // Start AI Bot simulation loop if any bot is in room
         const aiBot = Object.values(room.users).find((u: any) => u.isAi) as any;
@@ -3739,6 +3858,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       if (!room || !room.users[socket.id]) return;
       room.users[socket.id].progress = progress;
       socket.to(roomId).emit('opponent_progress', { userId: socket.id, progress });
+      broadcastLiveDuels();
     });
 
     socket.on('match_code_snapshot', ({ roomId, code, language, review }) => {
@@ -3833,6 +3953,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
       io.to(roomId).emit('chat_message', { system: true, text: systemMsg });
 
       io.to(roomId).emit('room_state_update', room);
+      broadcastLiveDuels();
     });
 
     socket.on('match_won', ({ roomId, problemTitle, difficulty, language, duration, passedCount, totalTests, code, playback, review, hintsUsed, hintCostPenalty, baseScore, finalScore }) => {
@@ -3914,10 +4035,18 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
         codeByUserId: buildMatchOverCodePayload(room),
       });
       io.to(roomId).emit('room_state_update', room);
+      broadcastLiveDuels();
     });
 
     socket.on('disconnect', () => {
       rooms.forEach((room, roomId) => {
+        if (room.spectators && room.spectators[socket.id]) {
+          delete room.spectators[socket.id];
+          io.to(roomId).emit('room_state_update', room);
+          if (Object.keys(room.users || {}).length === 0 && Object.keys(room.spectators || {}).length === 0) {
+            rooms.delete(roomId);
+          }
+        }
         if (room.users[socket.id]) {
           const disconnectedUser = room.users[socket.id] as any;
           const name = disconnectedUser.name;
@@ -3975,7 +4104,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
           io.to(roomId).emit('room_state_update', room);
           io.to(roomId).emit('chat_message', { system: true, text: `${name} disconnected from arena node.` });
 
-          if (Object.keys(room.users).length === 0) {
+          if (Object.keys(room.users).length === 0 && (!room.spectators || Object.keys(room.spectators).length === 0)) {
             if (botIntervals.has(roomId)) {
               clearInterval(botIntervals.get(roomId)!);
               botIntervals.delete(roomId);
@@ -3984,6 +4113,7 @@ Provide a concise 1-2 sentence algorithmic hint (e.g. data structure recommendat
           }
         }
       });
+      broadcastLiveDuels();
       // Clean up any pending direct challenges involving this socket
       for (const [cId, ch] of activeChallenges.entries()) {
         if (ch.senderSocketId === socket.id) {

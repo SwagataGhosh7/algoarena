@@ -64,15 +64,18 @@ const getStoredUser = () => {
     const savedId = localStorage.getItem('algoarena_userid');
     const id = savedId || uuidv4();
     if (!savedId) localStorage.setItem('algoarena_userid', id);
+    const defaultName = savedName || `Duelist_${id.substring(0, 4)}`;
+    if (!savedName) localStorage.setItem('algoarena_username', defaultName);
     
     return {
       id,
-      name: savedName || '',
+      name: defaultName,
     };
   } catch {
+    const fallbackId = uuidv4();
     return {
-      id: uuidv4(),
-      name: '',
+      id: fallbackId,
+      name: `Duelist_${fallbackId.substring(0, 4)}`,
     };
   }
 };

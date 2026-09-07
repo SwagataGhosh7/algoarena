@@ -9,7 +9,7 @@ import {
   Sparkles, X, Check, Trophy, Activity, Terminal, Bot, Lightbulb, 
   Code2, Flag, Zap, ChevronUp, ChevronDown, ChevronRight, Copy, CheckCheck, Plus, 
   Clock, Cpu, AlertCircle, AlertTriangle, RefreshCw, WifiOff, GitCompare, FileCode2, Stethoscope,
-  Layers, ZoomIn, ZoomOut, History, Share2, Columns, Maximize2, Minimize2, Users, ShieldCheck, LogIn
+  Layers, ZoomIn, ZoomOut, History, Share2, Columns, Maximize2, Minimize2, Users, ShieldCheck, LogIn, Eye
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import clsx from 'clsx';
@@ -96,20 +96,12 @@ export function Arena() {
   // 3. Match Eligibility: Only eligible to participate in invited 1v1 duels when BOTH are verified
   const isEligibleToPlay = isAuthenticated && isProfileInitialized;
 
-  // Enforce sequential invite gateway:
-  // Invite via match code -> (if new users) authentication -> profile initialization dashboard -> eligible
+  // Sync pending room ID
   useEffect(() => {
     if (roomId) {
       setPendingRoomId(roomId);
     }
-    if (!authLoading) {
-      if (!isAuthenticated) {
-        setAuthModalOpen(true);
-      } else if (!isProfileInitialized) {
-        setProfileSetupOpen(true);
-      }
-    }
-  }, [roomId, authLoading, isAuthenticated, isProfileInitialized, setPendingRoomId, setAuthModalOpen, setProfileSetupOpen]);
+  }, [roomId, setPendingRoomId]);
 
   const queryMode = searchParams.get('mode');
   const queryTopic = searchParams.get('topic');
@@ -117,8 +109,12 @@ export function Arena() {
   const queryLang = searchParams.get('lang');
 
   const isPracticeMode = queryMode === 'practice' || roomId?.startsWith('practice-');
+  const isSpectatorQuery = searchParams.get('spectate') === 'true';
   
   const [room, setRoom] = useState<RoomState | null>(null);
+  const isSpectator = isSpectatorQuery || Boolean(room?.spectators && socket.id && room.spectators[socket.id]);
+  const [spectateTarget, setSpectateTarget] = useState<'player1' | 'player2' | 'dual'>('player1');
+  const [spectatorPlayerCodes, setSpectatorPlayerCodes] = useState<Record<string, { code: string; language: string }>>({});
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   
@@ -405,21 +401,25 @@ export function Arena() {
   };
 
   useEffect(() => {
-    if (!roomId || !isEligibleToPlay) {
+    if (!roomId) {
       return;
     }
+
+    const resolvedUserId = accountProfile?.uid || currentUser.id;
+    const resolvedUsername = accountProfile?.username || currentUser.name || 'Duelist';
 
     socket.connect();
     
     socket.emit('join_room', { 
       roomId, 
       user: {
-        id: accountProfile?.uid || currentUser.id,
-        name: accountProfile?.username || currentUser.name,
+        id: resolvedUserId,
+        name: resolvedUsername,
       },
       mode: isPracticeMode ? 'practice' : 'duel',
       topic: selectedTopic,
       difficulty: selectedDifficulty,
+      spectate: isSpectatorQuery,
     });
 
     socket.on('room_state_update', (state: RoomState) => {
@@ -445,12 +445,35 @@ export function Arena() {
       prevOpponentsCountRef.current = currentOpponents.length;
       prevRoomStatusRef.current = state.status;
       setRoom(state);
+      if (state.users) {
+        Object.values(state.users).forEach((u: any) => {
+          if (u.liveCode || u.submittedCode) {
+            setSpectatorPlayerCodes(prev => ({
+              ...prev,
+              [u.id]: {
+                code: u.liveCode || u.submittedCode || '',
+                language: u.liveLanguage || u.submittedLanguage || 'typescript',
+              }
+            }));
+          }
+        });
+      }
       if (state.difficulty && (state.difficulty === 'easy' || state.difficulty === 'medium' || state.difficulty === 'hard')) {
         setSelectedDifficulty(state.difficulty);
       }
       if (state.topic) {
         setSelectedTopic(state.topic);
       }
+    });
+
+    socket.on('spectator_code_update', ({ userId, code: updatedCode, language: updatedLang }: { userId: string; code: string; language: string }) => {
+      setSpectatorPlayerCodes(prev => ({
+        ...prev,
+        [userId]: {
+          code: updatedCode,
+          language: updatedLang,
+        }
+      }));
     });
 
     socket.on('chat_message', (msg: ChatMessage) => {
@@ -572,6 +595,7 @@ export function Arena() {
       socket.off('chat_message');
       socket.off('match_started');
       socket.off('opponent_progress');
+      socket.off('spectator_code_update');
       socket.off('match_over');
       socket.off('opponent_afk_warning');
     };
@@ -1146,8 +1170,8 @@ export function Arena() {
     );
   }
 
-  // Step 1: Firebase Authentication Requirement Gate
-  if (!isAuthenticated) {
+  // Step 1: Firebase Authentication Requirement Gate (players only; spectators can watch freely)
+  if (!isSpectatorQuery && !isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex flex-col font-mono selection:bg-[#00FF00] selection:text-black">
         {/* Top Minimal Nav */}
@@ -1230,8 +1254,8 @@ export function Arena() {
     );
   }
 
-  // Step 2: Profile Initialization Dashboard Requirement Gate
-  if (!isProfileInitialized) {
+  // Step 2: Profile Initialization Dashboard Requirement Gate (players only)
+  if (!isSpectatorQuery && !isProfileInitialized) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex flex-col font-mono selection:bg-[#00FF00] selection:text-black">
         {/* Top Minimal Nav */}
@@ -1322,9 +1346,13 @@ export function Arena() {
     );
   }
 
-  const me = room.users[socket.id!];
-  const opponents = Object.values(room.users).filter(u => u.id !== socket.id);
-  const opponent = opponents[0];
+  const allPlayers = Object.values(room.users || {});
+  const player1 = allPlayers[0];
+  const player2 = allPlayers[1];
+  const me = room.users[socket.id!] || (isSpectator ? { id: socket.id || 'spectator', name: accountProfile?.username || currentUser?.name || 'Spectator', ready: true, progress: 0 } : undefined);
+  const opponents = isSpectator ? [] : Object.values(room.users).filter(u => u.id !== socket.id);
+  const opponent = isSpectator ? player2 : opponents[0];
+  const spectatorCount = Object.keys(room.spectators || {}).length;
 
   return (
     <div className="h-screen bg-[#050505] text-[#e0e0e0] flex flex-col font-sans overflow-hidden relative">
@@ -1337,18 +1365,19 @@ export function Arena() {
 
       {/* Top Navbar */}
       <nav 
-        className="h-14 border-b flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0 z-10 transition-colors"
+        className="h-14 border-b flex items-center justify-between px-4 sm:px-6 bg-[#0a0a0a] shrink-0 z-10 transition-colors"
         style={{ borderColor: `rgba(${neonTheme.rgb}, 0.3)` }}
       >
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <button 
             onClick={leaveRoom} 
             className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors px-2 py-1 border border-white/10 font-mono text-[10px] font-bold uppercase cursor-pointer"
-            title={room.status === 'active' ? 'Forfeit the active match first' : 'Leave room'}
+            title={room.status === 'active' && !isSpectator ? 'Forfeit the active match first' : 'Leave room'}
           >
-            <ArrowLeft className="w-4 h-4" /> LEAVE ROOM
+            <ArrowLeft className="w-4 h-4" /> 
+            <span>{isSpectator ? 'EXIT SPECTATE' : 'LEAVE ROOM'}</span>
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <AlgoArenaLogo size="sm" showTagline={false} />
             <span 
               className="text-[10px] px-2 py-0.5 border font-mono uppercase font-bold hidden md:inline-block"
@@ -1360,6 +1389,15 @@ export function Arena() {
             >
               Room: #{roomId}
             </span>
+            {isSpectator && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-500/15 border border-purple-500/40 text-purple-400 font-mono text-[10px] font-bold uppercase tracking-wider">
+                <Eye className="w-3 h-3 text-purple-400 animate-pulse" />
+                <span>SPECTATING LIVE</span>
+                <span className="bg-purple-500/30 px-1 py-0.1 text-[9px] text-purple-200 font-black rounded-xs">
+                  {spectatorCount}
+                </span>
+              </span>
+            )}
             <ConnectionStatus />
           </div>
         </div>
@@ -1380,113 +1418,162 @@ export function Arena() {
             totalSeconds={600}
             isActive={room?.status === 'active'}
             onTimeUp={() => {
-              setChat(prev => [...prev, { system: true, text: 'TIME EXPIRED // 00:00 REACHED. SUBMIT CODE IMMEDIATELY.' }]);
+              setChat(prev => [...prev, { system: true, text: 'TIME EXPIRED // 00:00 REACHED.' }]);
             }}
             showProgressRing
             showUrgencyBadge
           />
 
-          {/* Opponent Profile status */}
-          <div className="flex items-center gap-3">
-            <div 
-              onClick={() => opponent && openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
-              className={clsx(
-                "text-right group transition-all",
-                opponent ? "cursor-pointer hover:opacity-95" : ""
-              )}
-              title={opponent ? `Click to inspect ${opponent.name}'s profile and send friend request` : undefined}
-            >
-              <p className="text-[10px] font-bold uppercase text-zinc-500 flex items-center justify-end gap-1">
-                {opponent?.name === 'AlgoArena Bot' ? (
-                  <>
-                    <Bot className="w-3 h-3 text-[#00FF00]" />
-                    <span>ALGOARENA BOT // DSA PRACTICE</span>
-                  </>
-                ) : opponent?.isAi ? (
-                  <>
-                    <Sparkles className="w-3 h-3 text-[#00FF00]" />
-                    <span>GEMINI AI OPPONENT</span>
-                  </>
-                ) : (
-                  <span className="group-hover:text-[#00FF00] transition-colors">
-                    OPPONENT • <span className="underline decoration-[#00FF00]/50">[VIEW PROFILE]</span>
-                  </span>
+          {/* Opponent / Duelists Profile status */}
+          {!isSpectator ? (
+            <div className="flex items-center gap-3">
+              <div 
+                onClick={() => opponent && openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
+                className={clsx(
+                  "text-right group transition-all",
+                  opponent ? "cursor-pointer hover:opacity-95" : ""
                 )}
-              </p>
-              <p className="text-xs sm:text-sm font-bold text-white flex items-center justify-end gap-1">
-                <span className="group-hover:text-[#00FF00] group-hover:underline transition-colors">
-                  {opponent ? opponent.name : 'AWAITING DUELIST...'}
-                </span>
-                <span className="text-[#F27D26] ml-1 font-mono text-xs">
-                  {opponent?.name === 'AlgoArena Bot' 
-                    ? '[PRACTICE BOT]' 
-                    : opponent?.elo 
-                      ? `[${opponent.elo} ELO]` 
-                      : '[1450 ELO]'}
-                </span>
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => opponent && openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
-              className={clsx(
-                "w-8 h-8 border flex items-center justify-center font-mono text-xs font-bold uppercase transition-all",
-                opponent ? "cursor-pointer hover:scale-105" : "",
-                opponent?.ready ? "border-[#00FF00] bg-[#00FF00]/20 text-[#00FF00] shadow-[0_0_10px_rgba(0,255,0,0.3)]" : "border-white/10 bg-zinc-900 text-zinc-600 hover:border-white/30"
-              )}
-              title={opponent ? `Click to view ${opponent.name}'s profile & stats` : undefined}
-            >
-              {opponent?.name === 'AlgoArena Bot' ? <Bot className="w-4 h-4 text-[#00FF00]" /> : opponent ? opponent.name[0] : '?'}
-            </button>
-            {opponent && (
+                title={opponent ? `Click to inspect ${opponent.name}'s profile and send friend request` : undefined}
+              >
+                <p className="text-[10px] font-bold uppercase text-zinc-500 flex items-center justify-end gap-1">
+                  {opponent?.name === 'AlgoArena Bot' ? (
+                    <>
+                      <Bot className="w-3 h-3 text-[#00FF00]" />
+                      <span>ALGOARENA BOT // DSA PRACTICE</span>
+                    </>
+                  ) : opponent?.isAi ? (
+                    <>
+                      <Sparkles className="w-3 h-3 text-[#00FF00]" />
+                      <span>GEMINI AI OPPONENT</span>
+                    </>
+                  ) : (
+                    <span className="group-hover:text-[#00FF00] transition-colors">
+                      OPPONENT • <span className="underline decoration-[#00FF00]/50">[VIEW PROFILE]</span>
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs sm:text-sm font-bold text-white flex items-center justify-end gap-1">
+                  <span className="group-hover:text-[#00FF00] group-hover:underline transition-colors">
+                    {opponent ? opponent.name : 'AWAITING DUELIST...'}
+                  </span>
+                  <span className="text-[#F27D26] ml-1 font-mono text-xs">
+                    {opponent?.name === 'AlgoArena Bot' 
+                      ? '[PRACTICE BOT]' 
+                      : opponent?.elo 
+                        ? `[${opponent.elo} ELO]` 
+                        : '[1450 ELO]'}
+                  </span>
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
-                className="px-2.5 py-1 bg-black hover:bg-zinc-900 border border-[#00FF00]/40 text-[#00FF00] hover:text-white font-mono text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer shadow-[0_0_8px_rgba(0,255,0,0.15)]"
-                title={`Inspect ${opponent.name}'s stats, combat records & friend actions`}
+                onClick={() => opponent && openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
+                className={clsx(
+                  "w-8 h-8 border flex items-center justify-center font-mono text-xs font-bold uppercase transition-all",
+                  opponent ? "cursor-pointer hover:scale-105" : "",
+                  opponent?.ready ? "border-[#00FF00] bg-[#00FF00]/20 text-[#00FF00] shadow-[0_0_10px_rgba(0,255,0,0.3)]" : "border-white/10 bg-zinc-900 text-zinc-600 hover:border-white/30"
+                )}
+                title={opponent ? `Click to view ${opponent.name}'s profile & stats` : undefined}
               >
-                <Users className="w-3 h-3" />
-                <span className="hidden sm:inline">PROFILE & STATS</span>
+                {opponent?.name === 'AlgoArena Bot' ? <Bot className="w-4 h-4 text-[#00FF00]" /> : opponent ? opponent.name[0] : '?'}
               </button>
-            )}
-          </div>
+              {opponent && (
+                <button
+                  type="button"
+                  onClick={() => openOpponentProfile(opponent.name, opponent.elo ? Number(opponent.elo) : undefined, opponent.isAi)}
+                  className="px-2.5 py-1 bg-black hover:bg-zinc-900 border border-[#00FF00]/40 text-[#00FF00] hover:text-white font-mono text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer shadow-[0_0_8px_rgba(0,255,0,0.15)]"
+                  title={`Inspect ${opponent.name}'s stats, combat records & friend actions`}
+                >
+                  <Users className="w-3 h-3" />
+                  <span className="hidden sm:inline">PROFILE & STATS</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 font-mono text-xs">
+              <div 
+                onClick={() => player1 && openOpponentProfile(player1.name, player1.elo ? Number(player1.elo) : undefined, player1.isAi)}
+                className="flex items-center gap-1.5 px-2 py-1 bg-black/60 border border-white/10 hover:border-[#00FF00]/50 transition-colors cursor-pointer"
+                title={`Click to inspect ${player1?.name || 'Player 1'}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00FF00]" />
+                <span className="font-bold text-white text-[11px] truncate max-w-[90px]">{player1?.name || 'Player 1'}</span>
+                <span className="text-[9px] text-[#00FF00] font-black">{player1?.progress || 0}%</span>
+              </div>
+              <span className="text-zinc-600 font-black text-[10px]">VS</span>
+              <div 
+                onClick={() => player2 && openOpponentProfile(player2.name, player2.elo ? Number(player2.elo) : undefined, player2.isAi)}
+                className="flex items-center gap-1.5 px-2 py-1 bg-black/60 border border-white/10 hover:border-amber-400/50 transition-colors cursor-pointer"
+                title={`Click to inspect ${player2?.name || 'Player 2'}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span className="font-bold text-white text-[11px] truncate max-w-[90px]">{player2?.name || 'Awaiting P2'}</span>
+                <span className="text-[9px] text-amber-400 font-black">{player2?.progress || 0}%</span>
+              </div>
+            </div>
+          )}
 
           {/* Ready / Status Button */}
           <div>
-            {room.status === 'waiting' && (
-              <button 
-                onClick={toggleReady}
-                style={!me?.ready ? {
-                  backgroundColor: neonTheme.hex,
-                  color: neonTheme.contrastText,
-                  boxShadow: `0 0 15px rgba(${neonTheme.rgb}, 0.35)`
-                } : undefined}
-                className={clsx(
-                  "px-5 py-2 font-black uppercase text-xs tracking-widest transition-all cursor-pointer",
-                  me?.ready 
-                    ? "bg-zinc-800 text-zinc-300 border border-white/20 hover:bg-zinc-700" 
-                    : "hover:opacity-90"
+            {!isSpectator ? (
+              <>
+                {room.status === 'waiting' && (
+                  <button 
+                    onClick={toggleReady}
+                    style={!me?.ready ? {
+                      backgroundColor: neonTheme.hex,
+                      color: neonTheme.contrastText,
+                      boxShadow: `0 0 15px rgba(${neonTheme.rgb}, 0.35)`
+                    } : undefined}
+                    className={clsx(
+                      "px-5 py-2 font-black uppercase text-xs tracking-widest transition-all cursor-pointer",
+                      me?.ready 
+                        ? "bg-zinc-800 text-zinc-300 border border-white/20 hover:bg-zinc-700" 
+                        : "hover:opacity-90"
+                    )}
+                  >
+                    {me?.ready ? 'CANCEL READY' : 'HIT READY [F5]'}
+                  </button>
                 )}
-              >
-                {me?.ready ? 'CANCEL READY' : 'HIT READY [F5]'}
-              </button>
-            )}
-            {room.status === 'finished' && (
-              <div className="px-4 py-1.5 bg-[#F27D26]/20 text-[#F27D26] border border-[#F27D26]/40 font-black text-xs uppercase tracking-widest flex items-center gap-2">
-                <Trophy className="w-3.5 h-3.5" /> 
-                {room.winner === socket.id ? 'VICTORIOUS' : 'DEFEATED'}
+                {room.status === 'finished' && (
+                  <div className="px-4 py-1.5 bg-[#F27D26]/20 text-[#F27D26] border border-[#F27D26]/40 font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                    <Trophy className="w-3.5 h-3.5" /> 
+                    {room.winner === socket.id ? 'VICTORIOUS' : 'DEFEATED'}
+                  </div>
+                )}
+                {room.status === 'active' && (
+                  <button
+                    type="button"
+                    onClick={forfeitMatch}
+                    disabled={isForfeiting}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/50 text-red-400 hover:bg-red-500/10 font-mono text-[10px] font-black uppercase transition-colors disabled:opacity-50"
+                    title="Forfeit this match"
+                  >
+                    <Flag className="w-3 h-3" /> {isForfeiting ? 'ENDING...' : 'FORFEIT'}
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center">
+                {room.status === 'active' && (
+                  <div className="px-3 py-1.5 bg-emerald-500/20 text-[#00FF00] border border-emerald-500/40 font-mono text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#00FF00] animate-pulse" />
+                    <span>DUEL ACTIVE</span>
+                  </div>
+                )}
+                {room.status === 'waiting' && (
+                  <div className="px-3 py-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/40 font-mono text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-3 h-3" />
+                    <span>IN LOBBY</span>
+                  </div>
+                )}
+                {room.status === 'finished' && (
+                  <div className="px-3 py-1.5 bg-[#F27D26]/20 text-[#F27D26] border border-[#F27D26]/40 font-mono text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <Trophy className="w-3 h-3" />
+                    <span>CONCLUDED</span>
+                  </div>
+                )}
               </div>
-            )}
-            {room.status === 'active' && (
-              <button
-                type="button"
-                onClick={forfeitMatch}
-                disabled={isForfeiting}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/50 text-red-400 hover:bg-red-500/10 font-mono text-[10px] font-black uppercase transition-colors disabled:opacity-50"
-                title="Forfeit this match"
-              >
-                <Flag className="w-3 h-3" /> {isForfeiting ? 'ENDING...' : 'FORFEIT'}
-              </button>
             )}
           </div>
         </div>
@@ -1651,9 +1738,9 @@ export function Arena() {
                     <div className="flex items-center justify-between py-0.5">
                       <div className="flex items-center gap-2">
                         <div className="w-5 h-5 bg-[#00FF00]/20 border border-[#00FF00] text-[#00FF00] flex items-center justify-center font-bold text-[9px]">
-                          {currentUser.name.slice(0, 2).toUpperCase()}
+                          {(accountProfile?.username || currentUser?.name || 'DU').slice(0, 2).toUpperCase()}
                         </div>
-                        <span className="text-white font-bold text-xs">{currentUser.name} (YOU)</span>
+                        <span className="text-white font-bold text-xs">{accountProfile?.username || currentUser?.name || 'Duelist'} (YOU)</span>
                       </div>
                       <OnlineStatusIndicator
                         isOnline={true}
@@ -1900,147 +1987,227 @@ export function Arena() {
         {/* Center Column: Monaco Code Editor */}
         <section className="flex flex-col bg-[#050505] relative overflow-hidden border-r border-white/10 min-w-0">
           {/* Editor Header */}
-          <div className="h-11 bg-[#121212] flex items-center justify-between px-3 sm:px-4 border-b border-white/5 shrink-0 gap-2 overflow-x-auto no-scrollbar">
-            <div className="flex items-center gap-2.5 text-xs font-mono shrink-0">
-              <span className="text-[#00FF00] font-bold flex items-center gap-1.5">
-                <span 
-                  className="w-2 h-2 rounded-full inline-block shrink-0 shadow-xs"
-                  style={{
-                    backgroundColor: 
-                      language === 'python' ? '#387eb8' :
-                      language === 'cpp' ? '#00599c' :
-                      language === 'java' ? '#ea2d2e' :
-                      language === 'typescript' ? '#3178c6' :
-                      language === 'go' ? '#00add8' :
-                      language === 'rust' ? '#dea584' :
-                      language === 'c' ? '#9ca3af' : '#f7df1e'
-                  }}
+          {!isSpectator ? (
+            <div className="h-11 bg-[#121212] flex items-center justify-between px-3 sm:px-4 border-b border-white/5 shrink-0 gap-2 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-2.5 text-xs font-mono shrink-0">
+                <span className="text-[#00FF00] font-bold flex items-center gap-1.5">
+                  <span 
+                    className="w-2 h-2 rounded-full inline-block shrink-0 shadow-xs"
+                    style={{
+                      backgroundColor: 
+                        language === 'python' ? '#387eb8' :
+                        language === 'cpp' ? '#00599c' :
+                        language === 'java' ? '#ea2d2e' :
+                        language === 'typescript' ? '#3178c6' :
+                        language === 'go' ? '#00add8' :
+                        language === 'rust' ? '#dea584' :
+                        language === 'c' ? '#9ca3af' : '#f7df1e'
+                    }}
+                  />
+                  solution.{
+                    language === 'python' ? 'py' :
+                    language === 'cpp' ? 'cpp' :
+                    language === 'c' ? 'c' :
+                    language === 'java' ? 'java' :
+                    language === 'typescript' ? 'ts' :
+                    language === 'go' ? 'go' :
+                    language === 'rust' ? 'rs' : 'js'
+                  }
+                </span>
+
+                {/* Local Storage Auto-Save Status Badge */}
+                <AutoSaveStatusBadge
+                  status={autoSaveStatus}
+                  lastSavedTimestamp={lastSavedTimestamp}
+                  onManualSave={handleManualAutoSave}
+                  disabled={room?.status === 'finished'}
                 />
-                solution.{
-                  language === 'python' ? 'py' :
-                  language === 'cpp' ? 'cpp' :
-                  language === 'c' ? 'c' :
-                  language === 'java' ? 'java' :
-                  language === 'typescript' ? 'ts' :
-                  language === 'go' ? 'go' :
-                  language === 'rust' ? 'rs' : 'js'
-                }
-              </span>
-
-              {/* Local Storage Auto-Save Status Badge */}
-              <AutoSaveStatusBadge
-                status={autoSaveStatus}
-                lastSavedTimestamp={lastSavedTimestamp}
-                onManualSave={handleManualAutoSave}
-                disabled={room?.status === 'finished'}
-              />
-            </div>
-            
-            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-              {/* Horizontal 1-Click Language Switcher (Left to Right) */}
-              <div className="flex items-center bg-black/70 border border-white/10 rounded p-0.5 gap-0.5">
-                {[
-                  { id: 'c', label: 'C', color: '#9ca3af' },
-                  { id: 'cpp', label: 'C++', color: '#00599c' },
-                  { id: 'java', label: 'Java', color: '#ea2d2e' },
-                  { id: 'python', label: 'Python', color: '#387eb8' },
-                  { id: 'javascript', label: 'JS', color: '#f7df1e' },
-                  { id: 'typescript', label: 'TS', color: '#3178c6' },
-                ].map(langItem => {
-                  const isActive = language === langItem.id;
-                  return (
-                    <button
-                      key={langItem.id}
-                      type="button"
-                      onClick={() => handleLanguageChange(langItem.id)}
-                      disabled={room?.status === 'finished'}
-                      className={clsx(
-                        "px-2 py-1 text-[11px] font-mono font-bold rounded transition-all flex items-center gap-1.5 cursor-pointer",
-                        isActive
-                          ? "bg-[#00FF00]/20 text-[#00FF00] border border-[#00FF00]/50 shadow-[0_0_8px_rgba(0,255,0,0.25)]"
-                          : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
-                      )}
-                      title={`Switch language to ${langItem.label}`}
-                    >
-                      <span 
-                        className="w-1.5 h-1.5 rounded-full shrink-0"
-                        style={{ backgroundColor: langItem.color }}
-                      />
-                      <span>{langItem.label}</span>
-                    </button>
-                  );
-                })}
               </div>
+              
+              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                {/* Horizontal 1-Click Language Switcher (Left to Right) */}
+                <div className="flex items-center bg-black/70 border border-white/10 rounded p-0.5 gap-0.5">
+                  {[
+                    { id: 'c', label: 'C', color: '#9ca3af' },
+                    { id: 'cpp', label: 'C++', color: '#00599c' },
+                    { id: 'java', label: 'Java', color: '#ea2d2e' },
+                    { id: 'python', label: 'Python', color: '#387eb8' },
+                    { id: 'javascript', label: 'JS', color: '#f7df1e' },
+                    { id: 'typescript', label: 'TS', color: '#3178c6' },
+                  ].map(langItem => {
+                    const isActive = language === langItem.id;
+                    return (
+                      <button
+                        key={langItem.id}
+                        type="button"
+                        onClick={() => handleLanguageChange(langItem.id)}
+                        disabled={room?.status === 'finished'}
+                        className={clsx(
+                          "px-2 py-1 text-[11px] font-mono font-bold rounded transition-all flex items-center gap-1.5 cursor-pointer",
+                          isActive
+                            ? "bg-[#00FF00]/20 text-[#00FF00] border border-[#00FF00]/50 shadow-[0_0_8px_rgba(0,255,0,0.25)]"
+                            : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
+                        )}
+                        title={`Switch language to ${langItem.label}`}
+                      >
+                        <span 
+                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: langItem.color }}
+                        />
+                        <span>{langItem.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-              {/* Compact More Languages Dropdown */}
-              <LanguageDropdown
-                currentLanguage={language}
-                onLanguageChange={handleLanguageChange}
-                onResetTemplate={handleResetTemplate}
-                codeBuffers={codeBuffers}
-                autoInjectBoilerplate={autoInjectBoilerplate}
-                onToggleAutoInject={handleToggleAutoBoilerplate}
-                disabled={room?.status === 'finished'}
-                compact={true}
-              />
+                {/* Compact More Languages Dropdown */}
+                <LanguageDropdown
+                  currentLanguage={language}
+                  onLanguageChange={handleLanguageChange}
+                  onResetTemplate={handleResetTemplate}
+                  codeBuffers={codeBuffers}
+                  autoInjectBoilerplate={autoInjectBoilerplate}
+                  onToggleAutoInject={handleToggleAutoBoilerplate}
+                  disabled={room?.status === 'finished'}
+                  compact={true}
+                />
 
-              <div className="h-4 w-px bg-white/10 hidden sm:block" />
+                <div className="h-4 w-px bg-white/10 hidden sm:block" />
 
-              {/* Boilerplate Injection Controls */}
-              <BoilerplateControls
-                currentLanguage={language}
-                autoInjectEnabled={autoInjectBoilerplate}
-                onToggleAutoInject={handleToggleAutoBoilerplate}
-                boilerplateStyle={boilerplateStyle}
-                onChangeStyle={handleBoilerplateStyleChange}
-                onInjectBoilerplate={handleInjectBoilerplate}
-                disabled={room?.status === 'finished'}
-              />
+                {/* Boilerplate Injection Controls */}
+                <BoilerplateControls
+                  currentLanguage={language}
+                  autoInjectEnabled={autoInjectBoilerplate}
+                  onToggleAutoInject={handleToggleAutoBoilerplate}
+                  boilerplateStyle={boilerplateStyle}
+                  onChangeStyle={handleBoilerplateStyleChange}
+                  onInjectBoilerplate={handleInjectBoilerplate}
+                  disabled={room?.status === 'finished'}
+                />
 
-              {/* Font Zoom Controls */}
-              <div className="hidden xl:flex items-center bg-black/60 border border-white/10 px-1 py-0.5 text-[10px] text-zinc-400">
+                {/* Font Zoom Controls */}
+                <div className="hidden xl:flex items-center bg-black/60 border border-white/10 px-1 py-0.5 text-[10px] text-zinc-400">
+                  <button
+                    type="button"
+                    onClick={() => setEditorFontSize(f => Math.max(10, f - 1))}
+                    className="px-1 hover:text-white transition-colors"
+                    title="Decrease Editor Font Size"
+                  >
+                    <ZoomOut className="w-3 h-3" />
+                  </button>
+                  <span className="px-1 font-bold text-zinc-300">{editorFontSize}px</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditorFontSize(f => Math.min(22, f + 1))}
+                    className="px-1 hover:text-white transition-colors"
+                    title="Increase Editor Font Size"
+                  >
+                    <ZoomIn className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Minimap Toggle */}
                 <button
                   type="button"
-                  onClick={() => setEditorFontSize(f => Math.max(10, f - 1))}
-                  className="px-1 hover:text-white transition-colors"
-                  title="Decrease Editor Font Size"
+                  onClick={() => setShowMinimap(!showMinimap)}
+                  className={clsx(
+                    "hidden xl:flex items-center gap-1 px-2 py-1 border text-[10px] font-bold uppercase transition-colors cursor-pointer",
+                    showMinimap 
+                      ? "bg-[#00FF00]/15 text-[#00FF00] border-[#00FF00]/40" 
+                      : "bg-black/60 text-zinc-400 border-white/10 hover:text-white"
+                  )}
+                  title="Toggle Monaco Code Minimap"
                 >
-                  <ZoomOut className="w-3 h-3" />
+                  <Layers className="w-3 h-3" />
+                  <span>MAP</span>
                 </button>
-                <span className="px-1 font-bold text-zinc-300">{editorFontSize}px</span>
-                <button
-                  type="button"
-                  onClick={() => setEditorFontSize(f => Math.min(22, f + 1))}
-                  className="px-1 hover:text-white transition-colors"
-                  title="Increase Editor Font Size"
-                >
-                  <ZoomIn className="w-3 h-3" />
-                </button>
+
+                {/* Sound FX Toggle */}
+                <SoundToggle compact />
+              </div>
+            </div>
+          ) : (
+            <div className="h-11 bg-[#121212] flex items-center justify-between px-3 sm:px-4 border-b border-white/5 shrink-0 gap-2 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400 font-mono text-xs font-bold flex items-center gap-1.5">
+                  <Eye className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                  <span>SPECTATOR FEED</span>
+                </span>
+                <span className="text-[10px] bg-purple-500/10 border border-purple-500/30 text-purple-300 px-2 py-0.5 font-mono uppercase font-bold">
+                  {spectateTarget === 'dual' ? 'DUAL VIEW' : spectateTarget === 'player1' ? (player1?.name || 'Player 1') : (player2?.name || 'Player 2')}
+                </span>
               </div>
 
-              {/* Minimap Toggle */}
-              <button
-                type="button"
-                onClick={() => setShowMinimap(!showMinimap)}
-                className={clsx(
-                  "hidden xl:flex items-center gap-1 px-2 py-1 border text-[10px] font-bold uppercase transition-colors cursor-pointer",
-                  showMinimap 
-                    ? "bg-[#00FF00]/15 text-[#00FF00] border-[#00FF00]/40" 
-                    : "bg-black/60 text-zinc-400 border-white/10 hover:text-white"
-                )}
-                title="Toggle Monaco Code Minimap"
-              >
-                <Layers className="w-3 h-3" />
-                <span>MAP</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Switch Target Buttons */}
+                <div className="flex items-center bg-black/80 border border-white/10 rounded p-0.5 gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setSpectateTarget('player1')}
+                    className={clsx(
+                      "px-2.5 py-1 text-[10.5px] font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer",
+                      spectateTarget === 'player1'
+                        ? "bg-[#00FF00]/20 text-[#00FF00] border border-[#00FF00]/50"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00FF00]" />
+                    <span className="truncate max-w-[100px]">{player1?.name || 'Player 1'}</span>
+                  </button>
 
-              {/* Sound FX Toggle */}
-              <SoundToggle compact />
+                  <button
+                    type="button"
+                    onClick={() => setSpectateTarget('player2')}
+                    className={clsx(
+                      "px-2.5 py-1 text-[10.5px] font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer",
+                      spectateTarget === 'player2'
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/50"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span className="truncate max-w-[100px]">{player2?.name || 'Player 2'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSpectateTarget('dual')}
+                    className={clsx(
+                      "px-2.5 py-1 text-[10.5px] font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer",
+                      spectateTarget === 'dual'
+                        ? "bg-purple-500/25 text-purple-300 border border-purple-500/50"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <Columns className="w-3 h-3" />
+                    <span>DUAL VIEW</span>
+                  </button>
+                </div>
+
+                {/* Font Zoom Controls */}
+                <div className="hidden sm:flex items-center bg-black/60 border border-white/10 px-1 py-0.5 text-[10px] text-zinc-400">
+                  <button
+                    type="button"
+                    onClick={() => setEditorFontSize(f => Math.max(10, f - 1))}
+                    className="px-1 hover:text-white transition-colors"
+                  >
+                    <ZoomOut className="w-3 h-3" />
+                  </button>
+                  <span className="px-1 font-bold text-zinc-300">{editorFontSize}px</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditorFontSize(f => Math.min(22, f + 1))}
+                    className="px-1 hover:text-white transition-colors"
+                  >
+                    <ZoomIn className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
           
           {/* Boilerplate Auto-Injection Notification with Undo */}
-          {boilerplateNotice && (
+          {boilerplateNotice && !isSpectator && (
             <BoilerplateNotificationBanner
               language={boilerplateNotice.language}
               onUndo={boilerplateNotice.previousCode ? handleUndoBoilerplate : undefined}
@@ -2049,7 +2216,7 @@ export function Arena() {
           )}
 
           {/* Recovered Auto-Saved Draft Notification */}
-          {recoveredDraftInfo && (
+          {recoveredDraftInfo && !isSpectator && (
             <AutoSaveRecoveryBanner
               timestamp={recoveredDraftInfo.timestamp}
               lineCount={recoveredDraftInfo.lineCount}
@@ -2060,7 +2227,7 @@ export function Arena() {
           )}
 
           {/* Critical Urgency Banner (< 60s) */}
-          {room?.status === 'active' && (
+          {room?.status === 'active' && !isSpectator && (
             <CriticalUrgencyBanner
               seconds={timerSeconds}
               onQuickSubmit={submitCode}
@@ -2070,50 +2237,169 @@ export function Arena() {
 
           {/* Code Editor Body */}
           <div className="flex-1 relative bg-black/40">
-            <Editor
-              height="100%"
-              language={
-                language === 'c' ? 'c' :
-                language === 'cpp' ? 'cpp' :
-                language === 'java' ? 'java' :
-                language === 'python' ? 'python' :
-                language === 'typescript' ? 'typescript' :
-                language === 'go' ? 'go' :
-                language === 'rust' ? 'rust' : 'javascript'
+            {!isSpectator ? (
+              <Editor
+                height="100%"
+                language={
+                  language === 'c' ? 'c' :
+                  language === 'cpp' ? 'cpp' :
+                  language === 'java' ? 'java' :
+                  language === 'python' ? 'python' :
+                  language === 'typescript' ? 'typescript' :
+                  language === 'go' ? 'go' :
+                  language === 'rust' ? 'rust' : 'javascript'
+                }
+                theme={editorTheme}
+                beforeMount={registerMonacoThemes}
+                value={code}
+                onChange={val => {
+                  const nextVal = val || '';
+                  recordUserActivity();
+                  setCode(nextVal);
+                  setCodeBuffers(prev => ({ ...prev, [language]: nextVal }));
+                  setAutoSaveStatus('saving');
+                  socket.emit('player_code_update', { roomId, code: nextVal, language });
+                }}
+                options={{
+                  minimap: { enabled: showMinimap },
+                  fontSize: editorFontSize,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  lineHeight: Math.round(editorFontSize * 1.65),
+                  padding: { top: 16, bottom: 16 },
+                  scrollBeyondLastLine: false,
+                  readOnly: room?.status !== 'active',
+                  bracketPairColorization: { enabled: true },
+                  cursorBlinking: 'smooth',
+                  cursorSmoothCaretAnimation: 'on',
+                  smoothScrolling: true,
+                  renderLineHighlight: 'all',
+                  folding: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                  automaticLayout: true,
+                  formatOnPaste: true,
+                  formatOnType: true,
+                  suggestOnTriggerCharacters: true,
+                  quickSuggestions: true,
+                }}
+              />
+            ) : (() => {
+              const p1Data = spectatorPlayerCodes[player1?.id || ''] || {
+                code: player1?.submittedCode || player1?.liveCode || '// Waiting for Player 1 code stream...',
+                language: player1?.submittedLanguage || player1?.liveLanguage || 'typescript'
+              };
+              const p2Data = spectatorPlayerCodes[player2?.id || ''] || {
+                code: player2?.submittedCode || player2?.liveCode || '// Waiting for Player 2 code stream...',
+                language: player2?.submittedLanguage || player2?.liveLanguage || 'typescript'
+              };
+
+              if (spectateTarget === 'dual') {
+                return (
+                  <div className="h-full grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
+                    {/* Player 1 View */}
+                    <div className="h-full flex flex-col">
+                      <div className="h-8 bg-[#151515] border-b border-white/10 px-3 flex items-center justify-between font-mono text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#00FF00]" />
+                          <span className="font-bold text-white truncate">{player1?.name || 'Player 1'}</span>
+                          <span className="text-[10px] text-zinc-500">[{p1Data.language.toUpperCase()}]</span>
+                        </div>
+                        <span className="text-[#00FF00] font-black">{player1?.progress || 0}% Done</span>
+                      </div>
+                      <div className="flex-1 relative">
+                        <Editor
+                          height="100%"
+                          language={p1Data.language}
+                          theme={editorTheme}
+                          beforeMount={registerMonacoThemes}
+                          value={p1Data.code}
+                          options={{
+                            readOnly: true,
+                            minimap: { enabled: false },
+                            fontSize: Math.max(10, editorFontSize - 1),
+                            fontFamily: "'JetBrains Mono', monospace",
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            lineNumbers: 'on',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Player 2 View */}
+                    <div className="h-full flex flex-col">
+                      <div className="h-8 bg-[#151515] border-b border-white/10 px-3 flex items-center justify-between font-mono text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-400" />
+                          <span className="font-bold text-white truncate">{player2?.name || 'Player 2'}</span>
+                          <span className="text-[10px] text-zinc-500">[{p2Data.language.toUpperCase()}]</span>
+                        </div>
+                        <span className="text-amber-400 font-black">{player2?.progress || 0}% Done</span>
+                      </div>
+                      <div className="flex-1 relative">
+                        <Editor
+                          height="100%"
+                          language={p2Data.language}
+                          theme={editorTheme}
+                          beforeMount={registerMonacoThemes}
+                          value={p2Data.code}
+                          options={{
+                            readOnly: true,
+                            minimap: { enabled: false },
+                            fontSize: Math.max(10, editorFontSize - 1),
+                            fontFamily: "'JetBrains Mono', monospace",
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            lineNumbers: 'on',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
               }
-              theme={editorTheme}
-              beforeMount={registerMonacoThemes}
-              value={code}
-              onChange={val => {
-                const nextVal = val || '';
-                recordUserActivity();
-                setCode(nextVal);
-                setCodeBuffers(prev => ({ ...prev, [language]: nextVal }));
-                setAutoSaveStatus('saving');
-              }}
-              options={{
-                minimap: { enabled: showMinimap },
-                fontSize: editorFontSize,
-                fontFamily: "'JetBrains Mono', monospace",
-                lineHeight: Math.round(editorFontSize * 1.65),
-                padding: { top: 16, bottom: 16 },
-                scrollBeyondLastLine: false,
-                readOnly: room?.status !== 'active',
-                bracketPairColorization: { enabled: true },
-                cursorBlinking: 'smooth',
-                cursorSmoothCaretAnimation: 'on',
-                smoothScrolling: true,
-                renderLineHighlight: 'all',
-                folding: true,
-                tabSize: 2,
-                wordWrap: 'on',
-                automaticLayout: true,
-                formatOnPaste: true,
-                formatOnType: true,
-                suggestOnTriggerCharacters: true,
-                quickSuggestions: true,
-              }}
-            />
+
+              const isP1 = spectateTarget === 'player1';
+              const activeData = isP1 ? p1Data : p2Data;
+              const activePlayer = isP1 ? player1 : player2;
+
+              return (
+                <div className="h-full flex flex-col">
+                  <div className="h-8 bg-[#151515] border-b border-white/10 px-3 flex items-center justify-between font-mono text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className={clsx("w-2 h-2 rounded-full", isP1 ? "bg-[#00FF00]" : "bg-amber-400")} />
+                      <span className="font-bold text-white">
+                        OBSERVING: {activePlayer?.name || (isP1 ? 'Player 1' : 'Player 2')}
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        [{activeData.language.toUpperCase()}]
+                      </span>
+                    </div>
+                    <span className={clsx("font-black", isP1 ? "text-[#00FF00]" : "text-amber-400")}>
+                      {activePlayer?.progress || 0}% Progress
+                    </span>
+                  </div>
+                  <div className="flex-1 relative">
+                    <Editor
+                      height="100%"
+                      language={activeData.language}
+                      theme={editorTheme}
+                      beforeMount={registerMonacoThemes}
+                      value={activeData.code}
+                      options={{
+                        readOnly: true,
+                        minimap: { enabled: showMinimap },
+                        fontSize: editorFontSize,
+                        fontFamily: "'JetBrains Mono', monospace",
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        lineNumbers: 'on',
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
             
             {/* Overlay if waiting */}
             {room.status === 'waiting' && (
@@ -2530,22 +2816,29 @@ export function Arena() {
             <div className="flex items-center gap-3 text-xs font-mono text-zinc-500 overflow-hidden">
               <span className="text-[#00FF00] font-bold shrink-0">STATUS:</span>
               <span className="truncate">
-                {isRunningCode ? (
-                  <span className="text-[#00FF00] flex items-center gap-1.5">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00FF00]" />
-                    RUNNING ON EXTERNAL ENGINE (JUDGE0)...
-                  </span>
-                ) : isEvaluating ? (
-                  <span className="text-amber-400 flex items-center gap-1.5">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                    EXECUTING TEST SUITE (REFEREE)...
-                  </span>
-                ) : runResults ? (
-                  <span className={clsx("font-bold", runResults.allPassed ? "text-[#00FF00]" : "text-rose-400")}>
-                    SAMPLE RUN: {runResults.passedCount}/{runResults.totalCount} PASSED {runResults.totalTimeMs ? `(${runResults.totalTimeMs}ms)` : ''}
-                  </span>
+                {!isSpectator ? (
+                  isRunningCode ? (
+                    <span className="text-[#00FF00] flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00FF00]" />
+                      RUNNING ON EXTERNAL ENGINE (JUDGE0)...
+                    </span>
+                  ) : isEvaluating ? (
+                    <span className="text-amber-400 flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                      EXECUTING TEST SUITE (REFEREE)...
+                    </span>
+                  ) : runResults ? (
+                    <span className={clsx("font-bold", runResults.allPassed ? "text-[#00FF00]" : "text-rose-400")}>
+                      SAMPLE RUN: {runResults.passedCount}/{runResults.totalCount} PASSED {runResults.totalTimeMs ? `(${runResults.totalTimeMs}ms)` : ''}
+                    </span>
+                  ) : (
+                    'READY FOR EXECUTION'
+                  )
                 ) : (
-                  'READY FOR EXECUTION'
+                  <span className="text-purple-300 font-bold flex items-center gap-2">
+                    <Eye className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                    <span>SPECTATOR MODE // REAL-TIME CODE STREAM SYNCHRONIZED</span>
+                  </span>
                 )}
               </span>
             </div>
@@ -2562,47 +2855,51 @@ export function Arena() {
                 {isConsoleExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
               </button>
 
-              {/* RUN CODE Button */}
-              <button 
-                onClick={runCode}
-                disabled={room.status !== 'active' || isRunningCode || isEvaluating}
-                style={{
-                  color: neonTheme.hex,
-                  borderColor: `rgba(${neonTheme.rgb}, 0.5)`,
-                  boxShadow: `0 0 10px rgba(${neonTheme.rgb}, 0.15)`
-                }}
-                className="px-4 sm:px-5 py-2 bg-[#121212] hover:bg-zinc-900 text-xs font-mono font-bold uppercase tracking-wider border transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
-                title="Run code against sample test cases (Ctrl + Enter)"
-              >
-                {isRunningCode ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: neonTheme.hex }} />
-                ) : (
-                  <Terminal className="w-3.5 h-3.5" style={{ color: neonTheme.hex }} />
-                )}
-                <span>RUN CODE</span>
-                <kbd className="hidden md:inline text-[9px] bg-black px-1.5 py-0.5 border border-white/10 text-zinc-400 font-normal">
-                  Ctrl+Enter
-                </kbd>
-              </button>
+              {!isSpectator && (
+                <>
+                  {/* RUN CODE Button */}
+                  <button 
+                    onClick={runCode}
+                    disabled={room.status !== 'active' || isRunningCode || isEvaluating}
+                    style={{
+                      color: neonTheme.hex,
+                      borderColor: `rgba(${neonTheme.rgb}, 0.5)`,
+                      boxShadow: `0 0 10px rgba(${neonTheme.rgb}, 0.15)`
+                    }}
+                    className="px-4 sm:px-5 py-2 bg-[#121212] hover:bg-zinc-900 text-xs font-mono font-bold uppercase tracking-wider border transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                    title="Run code against sample test cases (Ctrl + Enter)"
+                  >
+                    {isRunningCode ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: neonTheme.hex }} />
+                    ) : (
+                      <Terminal className="w-3.5 h-3.5" style={{ color: neonTheme.hex }} />
+                    )}
+                    <span>RUN CODE</span>
+                    <kbd className="hidden md:inline text-[9px] bg-black px-1.5 py-0.5 border border-white/10 text-zinc-400 font-normal">
+                      Ctrl+Enter
+                    </kbd>
+                  </button>
 
-              {/* SUBMIT SOLUTION Button */}
-              <button 
-                onClick={submitCode}
-                disabled={room.status !== 'active' || isEvaluating || isRunningCode}
-                style={{
-                  backgroundColor: neonTheme.hex,
-                  color: neonTheme.contrastText,
-                  boxShadow: `0 0 15px rgba(${neonTheme.rgb}, 0.35)`
-                }}
-                className="px-5 sm:px-7 py-2 text-xs font-mono font-black uppercase tracking-wider hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
-                title="Submit solution to match referee (Ctrl + Shift + Enter)"
-              >
-                {isEvaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                <span>SUBMIT</span>
-                <kbd className="hidden lg:inline text-[9px] bg-black/20 px-1.5 py-0.5 font-normal">
-                  Ctrl+Shift+Enter
-                </kbd>
-              </button>
+                  {/* SUBMIT SOLUTION Button */}
+                  <button 
+                    onClick={submitCode}
+                    disabled={room.status !== 'active' || isEvaluating || isRunningCode}
+                    style={{
+                      backgroundColor: neonTheme.hex,
+                      color: neonTheme.contrastText,
+                      boxShadow: `0 0 15px rgba(${neonTheme.rgb}, 0.35)`
+                    }}
+                    className="px-5 sm:px-7 py-2 text-xs font-mono font-black uppercase tracking-wider hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                    title="Submit solution to match referee (Ctrl + Shift + Enter)"
+                  >
+                    {isEvaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                    <span>SUBMIT</span>
+                    <kbd className="hidden lg:inline text-[9px] bg-black/20 px-1.5 py-0.5 font-normal">
+                      Ctrl+Shift+Enter
+                    </kbd>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -3363,21 +3660,30 @@ export function Arena() {
               <div ref={chatEndRef} />
             </div>
 
-            <form onSubmit={sendChat} className="mt-4 pt-3 border-t border-white/5">
-              <div className="bg-black border border-white/10 px-3 py-2 flex items-center gap-2">
-                <span className="text-[#00FF00] text-xs font-mono font-bold">&gt;</span>
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  placeholder="SEND MESSAGE / REACTION..."
-                  className="bg-transparent border-none text-[10px] font-mono outline-none text-zinc-300 w-full uppercase font-bold placeholder:text-zinc-600"
-                />
-                <button type="submit" className="text-zinc-500 hover:text-[#00FF00]">
-                  <MessageSquare className="w-3.5 h-3.5" />
-                </button>
+            {isSpectator ? (
+              <div className="mt-4 pt-3 border-t border-white/5">
+                <div className="bg-black/80 border border-purple-500/30 px-3 py-2 flex items-center gap-2 text-zinc-400 text-[10.5px] font-mono">
+                  <Eye className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  <span className="truncate">SPECTATOR MODE: In-match chat disabled for fair play</span>
+                </div>
               </div>
-            </form>
+            ) : (
+              <form onSubmit={sendChat} className="mt-4 pt-3 border-t border-white/5">
+                <div className="bg-black border border-white/10 px-3 py-2 flex items-center gap-2">
+                  <span className="text-[#00FF00] text-xs font-mono font-bold">&gt;</span>
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    placeholder="SEND MESSAGE / REACTION..."
+                    className="bg-transparent border-none text-[10px] font-mono outline-none text-zinc-300 w-full uppercase font-bold placeholder:text-zinc-600"
+                  />
+                  <button type="submit" className="text-zinc-500 hover:text-[#00FF00]">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </aside>
       </main>

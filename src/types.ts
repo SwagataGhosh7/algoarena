@@ -25,11 +25,22 @@ export interface User {
   submittedCode?: string;
   submittedLanguage?: string;
   submittedReview?: EvaluationResult['review'];
+  liveCode?: string;
+  liveLanguage?: string;
+}
+
+export interface SpectatorUser {
+  id: string;
+  name: string;
+  avatar?: string;
+  elo?: number;
+  joinedAt: number;
 }
 
 export interface RoomState {
   id: string;
   users: Record<string, User>;
+  spectators?: Record<string, SpectatorUser>;
   status: 'waiting' | 'active' | 'finished';
   problem: Problem | null;
   winner?: string;
@@ -37,6 +48,28 @@ export interface RoomState {
   mode?: 'duel' | 'practice';
   topic?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
+}
+
+export interface LiveDuelPlayer {
+  id: string;
+  name: string;
+  avatar?: string;
+  elo?: number;
+  progress: number;
+  ready: boolean;
+  isAi?: boolean;
+}
+
+export interface LiveDuelSummary {
+  roomId: string;
+  status: 'waiting' | 'active' | 'finished';
+  mode?: 'duel' | 'practice';
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic?: string;
+  startTime?: number | null;
+  problemTitle?: string;
+  players: LiveDuelPlayer[];
+  spectatorCount: number;
 }
 
 export interface ChatMessage {
