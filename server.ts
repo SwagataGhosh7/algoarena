@@ -1502,7 +1502,8 @@ function getInitialCompetencies(): CompetencyTopic[] {
 }
 
 function seedInitialProfiles() {
-  if (userProfiles.size > 0) return;
+  // Only authentic real user accounts and players - no mock data
+  return;
 
   const initialDuelists: {
     username: string;
@@ -2147,7 +2148,8 @@ async function startServer() {
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
   });
-  app.use(express.json());
+  app.use(express.json({ limit: '15mb' }));
+  app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
   // In-memory state for rooms
   const rooms = new Map<string, any>();
@@ -2161,6 +2163,8 @@ async function startServer() {
     lastSeen: number;
     roomId?: string;
     status?: 'online' | 'in-match' | 'idle';
+    lookingForDuel?: boolean;
+    queuedAt?: number;
   }
   const activeSocketUsers = new Map<string, ActiveSocketUser>();
 
@@ -2244,6 +2248,164 @@ async function startServer() {
     return list;
   }
 
+  interface MatchmakingBracketPayload {
+    id: 'novice' | 'intermediate' | 'advanced' | 'elite';
+    name: string;
+    badge: string;
+    eloRange: string;
+    minElo: number;
+    maxElo: number;
+    count: number;
+    totalOnline: number;
+    avgWaitSeconds: number;
+    accentColor: string;
+    duelists: Array<{
+      username: string;
+      elo: number;
+      avatar?: string;
+      status: 'online' | 'in-match' | 'idle';
+      lookingForDuel: boolean;
+      queuedAt?: number;
+    }>;
+  }
+
+  function getMatchmakingAvailabilityData(): {
+    brackets: MatchmakingBracketPayload[];
+    totalLooking: number;
+    totalOnline: number;
+    timestamp: number;
+  } {
+    const brackets: Record<'novice' | 'intermediate' | 'advanced' | 'elite', MatchmakingBracketPayload> = {
+      novice: {
+        id: 'novice',
+        name: 'Novice Division',
+        badge: 'TIER IV',
+        eloRange: '< 1200 ELO',
+        minElo: 0,
+        maxElo: 1199,
+        count: 0,
+        totalOnline: 0,
+        avgWaitSeconds: 0,
+        accentColor: '#10B981', // emerald
+        duelists: [],
+      },
+      intermediate: {
+        id: 'intermediate',
+        name: 'Intermediate Division',
+        badge: 'TIER III',
+        eloRange: '1200 - 1599 ELO',
+        minElo: 1200,
+        maxElo: 1599,
+        count: 0,
+        totalOnline: 0,
+        avgWaitSeconds: 0,
+        accentColor: '#06B6D4', // cyan
+        duelists: [],
+      },
+      advanced: {
+        id: 'advanced',
+        name: 'Advanced Division',
+        badge: 'TIER II',
+        eloRange: '1600 - 1999 ELO',
+        minElo: 1600,
+        maxElo: 1999,
+        count: 0,
+        totalOnline: 0,
+        avgWaitSeconds: 0,
+        accentColor: '#A855F7', // violet
+        duelists: [],
+      },
+      elite: {
+        id: 'elite',
+        name: 'Elite',
+        badge: 'TIER I',
+        eloRange: '2000+ ELO',
+        minElo: 2000,
+        maxElo: 3000,
+        count: 0,
+        totalOnline: 0,
+        avgWaitSeconds: 0,
+        accentColor: '#00FF00', // matrix green
+        duelists: [],
+      },
+    };
+
+    const getBracketKey = (elo: number): 'novice' | 'intermediate' | 'advanced' | 'elite' => {
+      if (elo >= 2000) return 'elite';
+      if (elo >= 1600) return 'advanced';
+      if (elo >= 1200) return 'intermediate';
+      return 'novice';
+    };
+
+    const seenUsernames = new Set<string>();
+
+    // Process connected real socket users ONLY (no bots, no mock placeholders)
+    for (const u of activeSocketUsers.values()) {
+      if (u.username && u.username !== 'Anonymous Duelist' && !isBotOpponent(u.username)) {
+        const lower = u.username.toLowerCase();
+        if (!seenUsernames.has(lower)) {
+          seenUsernames.add(lower);
+          const prof = userProfiles.get(lower);
+          const elo = u.elo || prof?.elo || 1200;
+          const bracketKey = getBracketKey(elo);
+
+          let status: 'online' | 'in-match' | 'idle' = u.status || 'online';
+          if (u.roomId && rooms.has(u.roomId)) {
+            const activeRoom = rooms.get(u.roomId);
+            if (activeRoom && (activeRoom.status === 'active' || activeRoom.status === 'waiting')) {
+              status = 'in-match';
+            }
+          }
+          const isLooking = status === 'online' && (u.lookingForDuel !== false);
+
+          brackets[bracketKey].totalOnline += 1;
+          if (isLooking) {
+            brackets[bracketKey].count += 1;
+            brackets[bracketKey].duelists.push({
+              username: u.username,
+              elo,
+              avatar: u.avatar || prof?.photoURL,
+              status,
+              lookingForDuel: isLooking,
+              queuedAt: u.queuedAt || u.lastSeen,
+            });
+          }
+        }
+      }
+    }
+
+    // Compute estimated wait time per bracket based purely on authentic queue counts
+    for (const key of ['novice', 'intermediate', 'advanced', 'elite'] as const) {
+      const b = brackets[key];
+      if (b.count >= 4) {
+        b.avgWaitSeconds = 6;
+      } else if (b.count === 3) {
+        b.avgWaitSeconds = 12;
+      } else if (b.count === 2) {
+        b.avgWaitSeconds = 18;
+      } else if (b.count === 1) {
+        b.avgWaitSeconds = 30;
+      } else {
+        b.avgWaitSeconds = 0;
+      }
+    }
+
+    const bracketList = [brackets.novice, brackets.intermediate, brackets.advanced, brackets.elite];
+    const totalLooking = bracketList.reduce((sum, b) => sum + b.count, 0);
+    const totalOnline = bracketList.reduce((sum, b) => sum + b.totalOnline, 0);
+
+    return {
+      brackets: bracketList,
+      totalLooking,
+      totalOnline,
+      timestamp: Date.now(),
+    };
+  }
+
+  function broadcastMatchmakingAvailability() {
+    io.emit('matchmaking_availability_update', getMatchmakingAvailabilityData());
+  }
+
   function broadcastOnlineUsers() {
     const onlineUsernames = getOnlineUsernamesList();
     const activeCount = Math.max(1, activeSocketUsers.size);
@@ -2251,9 +2413,15 @@ async function startServer() {
       onlineUsernames,
       activeCount,
     });
+    io.emit('online_users', {
+      count: activeCount,
+      activeCount,
+    });
     io.emit('lobby_operators_update', {
       operators: getLobbyOperatorsList(),
+      activeCount,
     });
+    broadcastMatchmakingAvailability();
   }
 
   function getLiveDuelsList() {
@@ -2316,6 +2484,7 @@ async function startServer() {
     userId: string;
     username: string;
     text: string;
+    imageUrl?: string;
     timestamp: number;
     elo?: number;
     avatar?: string;
@@ -2323,40 +2492,27 @@ async function startServer() {
     isSystem?: boolean;
   }
 
-  const lobbyChatMessages: LobbyChatMessage[] = [
-    {
-      id: 'lmsg-seed-1',
-      userId: 'system',
-      username: 'System // AlgoArena Kernel',
-      text: 'Global lobby subnet online. Chat with active duelists, initiate 1v1 scrims, or exchange algorithm insights.',
-      timestamp: Date.now() - 3600000,
-      isSystem: true,
-    },
-    {
-      id: 'lmsg-seed-2',
-      userId: 'seed-ronin',
-      username: 'CyberRonin_99',
-      text: 'Looking for a Hard-tier graph or dynamic programming sparring partner. Send a direct challenge if ready!',
-      timestamp: Date.now() - 1800000,
-      elo: 2150,
-    },
-    {
-      id: 'lmsg-seed-3',
-      userId: 'seed-queen',
-      username: 'NullPointerQueen',
-      text: 'GL HF to everyone on ladder today! Remember to check bounds on empty array test cases.',
-      timestamp: Date.now() - 900000,
-      elo: 1880,
-    },
-    {
-      id: 'lmsg-seed-4',
-      userId: 'seed-bit',
-      username: 'BitFlipper_42',
-      text: 'Just solved Maximum Non-Adjacent Energy in TypeScript under 4 minutes. Feels good.',
-      timestamp: Date.now() - 300000,
-      elo: 1620,
-    },
-  ];
+  // Real users only - no mock or simulated chat messages
+  const lobbyChatMessages: LobbyChatMessage[] = [];
+
+  // Private 1-on-1 Chat Storage
+  interface PrivateChatMessage {
+    id: string;
+    conversationId: string;
+    fromUsername: string;
+    toUsername: string;
+    text: string;
+    imageUrl?: string;
+    timestamp: number;
+    elo?: number;
+    avatar?: string;
+  }
+
+  const privateChatConversations = new Map<string, PrivateChatMessage[]>();
+
+  function getConversationKey(u1: string, u2: string): string {
+    return [u1.trim().toLowerCase(), u2.trim().toLowerCase()].sort().join('::');
+  }
 
   // API Routes
   app.get('/api/health', (req, res) => {
@@ -2379,12 +2535,61 @@ async function startServer() {
     });
   });
 
+  // Real-time matchmaking availability across skill brackets
+  app.get('/api/matchmaking-availability', (req, res) => {
+    res.json(getMatchmakingAvailabilityData());
+  });
+
   // Global persistent lobby chat messages endpoint
   app.get('/api/lobby-chat', (req, res) => {
     res.json({
       messages: lobbyChatMessages.slice(-100),
       onlineCount: Math.max(1, activeSocketUsers.size),
     });
+  });
+
+  // Private 1-on-1 direct message conversation history endpoint
+  app.get('/api/private-chat', (req, res) => {
+    const user1 = String(req.query.user1 || '').trim();
+    const user2 = String(req.query.user2 || '').trim();
+    if (!user1 || !user2) {
+      return res.status(400).json({ error: 'Both user1 and user2 query parameters are required' });
+    }
+    const convId = getConversationKey(user1, user2);
+    const msgs = privateChatConversations.get(convId) || [];
+    res.json({
+      conversationId: convId,
+      messages: msgs.slice(-100),
+    });
+  });
+
+  // User private message threads / recent active conversations list
+  app.get('/api/user-conversations', (req, res) => {
+    const username = String(req.query.username || '').trim().toLowerCase();
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    const conversations: Array<{
+      participant: string;
+      lastMessage: PrivateChatMessage;
+      participantProfile?: UserProfileData;
+    }> = [];
+
+    for (const [convId, msgs] of privateChatConversations.entries()) {
+      const parts = convId.split('::');
+      if (parts.includes(username) && msgs.length > 0) {
+        const otherName = parts[0] === username ? parts[1] : parts[0];
+        const lastMsg = msgs[msgs.length - 1];
+        const profile = userProfiles.get(otherName.toLowerCase());
+        conversations.push({
+          participant: otherName,
+          lastMessage: lastMsg,
+          participantProfile: profile,
+        });
+      }
+    }
+    conversations.sort((a, b) => b.lastMessage.timestamp - a.lastMessage.timestamp);
+    res.json({ conversations });
   });
 
   // Global telemetry and live activity endpoint - Real unmocked telemetry
@@ -2421,9 +2626,9 @@ async function startServer() {
       }
 
       const currentUserNameLower = currentUser?.trim().toLowerCase();
-      const minimumGames = 5;
+      const minimumGames = 0;
 
-      // Count ONLY human vs human duels for leaderboard eligibility (playing bots does NOT qualify)
+      // Count human vs human duels for leaderboard stats
       const getHumanDuelsCount = (p: UserProfileData) => {
         return (p.matches || []).filter(m => !isBotOpponent(m.opponent, (m as any).isBot)).length;
       };
@@ -2433,11 +2638,10 @@ async function startServer() {
       const isFriendsScope = scope === 'friends';
       const friendNames = new Set((currentProfile?.friends || []).map(name => name.toLowerCase()));
 
-      // Transform user profiles into structured leaderboard entries
-      // Strictly exclude bots from ranking and require at least 5 authentic 1v1 human duels
+      // Transform real user profiles into structured leaderboard entries
+      // Exclude bots and ensure authentic real players
       const allEntries = Array.from(userProfiles.values())
         .filter(p => !isBotOpponent(p.username))
-        .filter(p => getHumanDuelsCount(p) >= minimumGames)
         .filter(p => !isFriendsScope || p.username.toLowerCase() === currentUserNameLower || friendNames.has(p.username.toLowerCase()))
         .map(p => {
         const total = p.totalDuels || (p.wins + p.losses);
@@ -2553,7 +2757,6 @@ async function startServer() {
           botMatchesExcluded: true,
           friendCount: currentProfile?.friends?.length || 0,
           season: 'SEASON 04: NEON MATRIX',
-          seasonEndsIn: '14D 06H 18M',
           currentUserStats,
           lastUpdated: new Date().toLocaleTimeString('en-US', { hour12: false }),
           ratingBrackets: {
@@ -2613,6 +2816,7 @@ async function startServer() {
     if (!to.incomingFriendRequests.some(name => name.toLowerCase() === fromKey)) {
       to.incomingFriendRequests.push(from.username);
     }
+    io.emit('friend_update', { from: from.username, to: to.username, status: 'pending' });
     res.json({ status: 'pending' });
   });
 
@@ -2633,7 +2837,24 @@ async function startServer() {
       if (!recipient.friends.some(name => name.toLowerCase() === requesterKey)) recipient.friends.push(requester.username);
       if (!requester.friends.some(name => name.toLowerCase() === recipientKey)) requester.friends.push(recipient.username);
     }
+    io.emit('friend_update', { from: requester.username, to: recipient.username, status: accept ? 'friends' : 'none' });
     res.json({ status: accept ? 'friends' : 'none' });
+  });
+
+  app.post('/api/friends/remove', (req, res) => {
+    const username = String(req.body?.username || '').trim();
+    const friendName = String(req.body?.friend || '').trim();
+    if (!username || !friendName) return res.status(400).json({ error: 'Both usernames are required' });
+
+    const user = getOrCreateUserProfile(username);
+    const friend = getOrCreateUserProfile(friendName);
+    const userKey = user.username.toLowerCase();
+    const friendKey = friend.username.toLowerCase();
+
+    user.friends = user.friends.filter(name => name.toLowerCase() !== friendKey);
+    friend.friends = friend.friends.filter(name => name.toLowerCase() !== userKey);
+    io.emit('friend_update', { from: user.username, to: friend.username, status: 'none' });
+    res.json({ status: 'none' });
   });
 
   // User Profile / Stats Endpoint
@@ -3091,8 +3312,8 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
     socket.on('user_presence', ({ username, status }: { username: string; status?: 'online' | 'in-match' | 'idle' }) => {
       if (username && username.trim()) {
         const cleanName = username.trim();
+        const profile = getOrCreateUserProfile(cleanName);
         const existing = activeSocketUsers.get(socket.id);
-        const profile = userProfiles.get(cleanName.toLowerCase());
         const presenceStatus = status || (existing?.roomId ? 'in-match' : 'online');
         activeSocketUsers.set(socket.id, {
           socketId: socket.id,
@@ -3111,8 +3332,8 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
     socket.on('register_user', ({ username, elo, avatar, status }: { username: string; elo?: number; avatar?: string; status?: 'online' | 'in-match' | 'idle' }) => {
       if (username && username.trim()) {
         const cleanName = username.trim();
+        const profile = getOrCreateUserProfile(cleanName);
         const existing = activeSocketUsers.get(socket.id);
-        const profile = userProfiles.get(cleanName.toLowerCase());
         const presenceStatus = status || (existing?.roomId ? 'in-match' : 'online');
         activeSocketUsers.set(socket.id, {
           socketId: socket.id,
@@ -3132,10 +3353,39 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
       const existing = activeSocketUsers.get(socket.id);
       if (existing) {
         existing.status = status;
+        if (status !== 'online') {
+          existing.lookingForDuel = false;
+        }
         existing.lastSeen = Date.now();
         broadcastOnlineUsers();
       }
     });
+
+    // Toggle or update looking for duel status
+    socket.on('set_looking_for_duel', ({ looking }: { looking: boolean }) => {
+      const existing = activeSocketUsers.get(socket.id);
+      if (existing) {
+        existing.lookingForDuel = Boolean(looking);
+        existing.lastSeen = Date.now();
+        if (looking) {
+          existing.status = 'online';
+          existing.queuedAt = Date.now();
+        }
+        broadcastMatchmakingAvailability();
+      }
+    });
+
+    // Handle client request for matchmaking availability
+    socket.on('get_matchmaking_availability', (callback) => {
+      const data = getMatchmakingAvailabilityData();
+      socket.emit('matchmaking_availability_update', data);
+      if (typeof callback === 'function') {
+        callback(data);
+      }
+    });
+
+    // Emit initial matchmaking availability immediately to newly connected client
+    socket.emit('matchmaking_availability_update', getMatchmakingAvailabilityData());
 
     // Real-Time Global Lobby Chat
     // Emit initial chat history immediately to newly connected client
@@ -3156,11 +3406,13 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
       }
     });
 
-    // Handle incoming lobby message and broadcast to all connected operators
-    socket.on('send_lobby_chat', ({ text, username, elo, avatar }: { text: string; username?: string; elo?: number; avatar?: string }) => {
-      if (!text || typeof text !== 'string') return;
-      const cleanText = text.trim();
-      if (!cleanText || cleanText.length > 500) return;
+    // Handle incoming lobby message and broadcast to all connected duelists
+    socket.on('send_lobby_chat', ({ text, imageUrl, username, elo, avatar }: { text?: string; imageUrl?: string; username?: string; elo?: number; avatar?: string }) => {
+      const cleanText = (typeof text === 'string' ? text.trim() : '');
+      const cleanImage = (typeof imageUrl === 'string' && (imageUrl.startsWith('data:image/') || imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) ? imageUrl : undefined;
+
+      if (!cleanText && !cleanImage) return;
+      if (cleanText.length > 1000) return;
 
       const sender = activeSocketUsers.get(socket.id);
       const cleanName = (username || sender?.username || 'Anonymous Duelist').trim();
@@ -3169,10 +3421,11 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
       const cleanAvatar = avatar || sender?.avatar || userProfile?.photoURL;
 
       const newMsg: LobbyChatMessage = {
-        id: `lmsg-${Date.now()}-${uuidv4().slice(0, 6)}`,
+        id: `lmsg-${Date.now()}-${uuidv4().slice(0, 8)}`,
         userId: socket.id,
         username: cleanName,
         text: cleanText,
+        imageUrl: cleanImage,
         timestamp: Date.now(),
         elo: cleanElo,
         avatar: cleanAvatar,
@@ -3186,6 +3439,152 @@ TASK: Answer their conceptual question in 2-3 concise sentences with actionable 
 
       // Authoritative broadcast to all connected sockets
       io.emit('lobby_chat_message', newMsg);
+    });
+
+    // Handle Unsend Lobby Chat (Instagram-style real-time deletion)
+    socket.on('unsend_lobby_chat', ({ messageId, username }: { messageId: string; username?: string }) => {
+      if (!messageId || typeof messageId !== 'string') return;
+      const sender = activeSocketUsers.get(socket.id);
+      const senderUsername = (username || sender?.username || '').trim().toLowerCase();
+
+      const msgIndex = lobbyChatMessages.findIndex(m => m.id === messageId);
+      if (msgIndex === -1) {
+        // Still broadcast to ensure frontend sync in case client has local cache
+        io.emit('lobby_chat_unsent', { messageId });
+        return;
+      }
+
+      const msg = lobbyChatMessages[msgIndex];
+      // Ownership check
+      const isOwner = msg.userId === socket.id || (senderUsername && msg.username.toLowerCase() === senderUsername);
+      if (isOwner) {
+        lobbyChatMessages.splice(msgIndex, 1);
+        io.emit('lobby_chat_unsent', { messageId });
+      }
+    });
+
+    // Real-Time Typing Indicator for Global Lobby
+    socket.on('lobby_typing', ({ username, isTyping }: { username?: string; isTyping: boolean }) => {
+      const sender = activeSocketUsers.get(socket.id);
+      const cleanName = (username || sender?.username || '').trim();
+      if (!cleanName || cleanName === 'Anonymous Duelist') return;
+      socket.broadcast.emit('lobby_typing', { username: cleanName, isTyping: Boolean(isTyping) });
+    });
+
+    // Real-Time Typing Indicator for 1-on-1 Private Messages
+    socket.on('private_typing', ({ toUsername, fromUsername, isTyping }: { toUsername: string; fromUsername?: string; isTyping: boolean }) => {
+      const sender = activeSocketUsers.get(socket.id);
+      const senderName = (fromUsername || sender?.username || '').trim();
+      const cleanTo = (toUsername || '').trim().toLowerCase();
+      if (!cleanTo || !senderName) return;
+
+      for (const [sockId, user] of activeSocketUsers.entries()) {
+        if (user.username && user.username.toLowerCase() === cleanTo) {
+          io.to(sockId).emit('private_typing', { fromUsername: senderName, isTyping: Boolean(isTyping) });
+        }
+      }
+    });
+
+    // Handle Client Request for 1-on-1 Private Message History
+    socket.on('get_private_chat_history', ({ user1, user2 }: { user1: string; user2: string }, callback) => {
+      if (!user1 || !user2) return;
+      const convId = getConversationKey(user1, user2);
+      const messages = (privateChatConversations.get(convId) || []).slice(-100);
+      const payload = {
+        conversationId: convId,
+        withUser: user2,
+        messages,
+      };
+      socket.emit('private_chat_history', payload);
+      if (typeof callback === 'function') {
+        callback(payload);
+      }
+    });
+
+    // Handle Sending 1-on-1 Private Message
+    socket.on('send_private_chat', ({ toUsername, text, imageUrl, username, elo, avatar }: {
+      toUsername: string;
+      text?: string;
+      imageUrl?: string;
+      username?: string;
+      elo?: number;
+      avatar?: string;
+    }) => {
+      const cleanText = (typeof text === 'string' ? text.trim() : '');
+      const cleanImage = (typeof imageUrl === 'string' && (imageUrl.startsWith('data:image/') || imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) ? imageUrl : undefined;
+
+      if (!cleanText && !cleanImage) return;
+      if (cleanText.length > 1000) return;
+
+      const sender = activeSocketUsers.get(socket.id);
+      const fromName = (username || sender?.username || 'Anonymous Duelist').trim();
+      const cleanTo = (toUsername || '').trim();
+      if (!cleanTo || fromName.toLowerCase() === cleanTo.toLowerCase()) return;
+
+      const senderProfile = userProfiles.get(fromName.toLowerCase());
+      const cleanElo = typeof elo === 'number' ? elo : (sender?.elo || senderProfile?.elo || 1200);
+      const cleanAvatar = avatar || sender?.avatar || senderProfile?.photoURL;
+
+      const convId = getConversationKey(fromName, cleanTo);
+      const newMsg: PrivateChatMessage = {
+        id: `pmsg-${Date.now()}-${uuidv4().slice(0, 8)}`,
+        conversationId: convId,
+        fromUsername: fromName,
+        toUsername: cleanTo,
+        text: cleanText,
+        imageUrl: cleanImage,
+        timestamp: Date.now(),
+        elo: cleanElo,
+        avatar: cleanAvatar,
+      };
+
+      if (!privateChatConversations.has(convId)) {
+        privateChatConversations.set(convId, []);
+      }
+      const list = privateChatConversations.get(convId)!;
+      list.push(newMsg);
+      if (list.length > 200) {
+        list.splice(0, list.length - 200);
+      }
+
+      // 1. Send back to the sender
+      socket.emit('private_chat_message', newMsg);
+
+      // 2. Deliver in real-time to all connected socket instances of the recipient
+      const toLower = cleanTo.toLowerCase();
+      let recipientDelivered = false;
+      for (const [sockId, user] of activeSocketUsers.entries()) {
+        if (user.username && user.username.toLowerCase() === toLower) {
+          io.to(sockId).emit('private_chat_message', newMsg);
+          recipientDelivered = true;
+        }
+      }
+    });
+
+    // Handle Unsend Private Chat (Instagram-style deletion)
+    socket.on('unsend_private_chat', ({ messageId, toUsername, username }: { messageId: string; toUsername?: string; username?: string }) => {
+      if (!messageId) return;
+      const sender = activeSocketUsers.get(socket.id);
+      const senderUsername = (username || sender?.username || '').trim().toLowerCase();
+
+      for (const [convId, list] of privateChatConversations.entries()) {
+        const idx = list.findIndex(m => m.id === messageId);
+        if (idx !== -1) {
+          const msg = list[idx];
+          const isOwner = msg.fromUsername.toLowerCase() === senderUsername || msg.fromUsername === sender?.username;
+          if (isOwner) {
+            list.splice(idx, 1);
+            socket.emit('private_chat_unsent', { messageId, conversationId: convId });
+            const toLower = (toUsername || msg.toUsername).toLowerCase();
+            for (const [sockId, user] of activeSocketUsers.entries()) {
+              if (user.username && user.username.toLowerCase() === toLower) {
+                io.to(sockId).emit('private_chat_unsent', { messageId, conversationId: convId });
+              }
+            }
+          }
+          break;
+        }
+      }
     });
 
     // Real-Time Direct Challenge Flow

@@ -20,7 +20,8 @@ import {
   ShieldCheck,
   Edit3,
   Eye,
-  Tv
+  Tv,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlobalActivity } from '../components/GlobalActivity';
@@ -30,6 +31,8 @@ import { LiveSpectateList } from '../components/LiveSpectateList';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SoundToggle } from '../components/SoundToggle';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
+import { CreatePrivateRoomModal } from '../components/CreatePrivateRoomModal';
+import { MatchmakingAvailabilityChart } from '../components/MatchmakingAvailabilityChart';
 
 export function Home() {
   const navigate = useNavigate();
@@ -38,13 +41,15 @@ export function Home() {
     accountProfile, 
     setAuthModalOpen, 
     logout, 
-    setProfileSetupOpen 
+    setProfileSetupOpen,
+    setFriendsModalOpen 
   } = useStore();
   const [showPracticeModal, setShowPracticeModal] = useState(false);
+  const [showCreatePrivateModal, setShowCreatePrivateModal] = useState(false);
   const [practiceTopic, setPracticeTopic] = useState('Dynamic Programming');
   const [practiceDiff, setPracticeDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [practiceLang, setPracticeLang] = useState('c');
-  const [activeFeedTab, setActiveFeedTab] = useState<'leaderboard' | 'telemetry' | 'operators' | 'spectate'>('leaderboard');
+  const [activeFeedTab, setActiveFeedTab] = useState<'leaderboard' | 'telemetry' | 'operators' | 'spectate' | 'availability'>('leaderboard');
   const [matchCodeInput, setMatchCodeInput] = useState('');
   const [matchCodeError, setMatchCodeError] = useState('');
 
@@ -65,8 +70,7 @@ export function Home() {
   };
 
   const handleCreatePrivate = () => {
-    const roomId = uuidv4().substring(0, 8);
-    navigate(`/room/${roomId}`);
+    setShowCreatePrivateModal(true);
   };
 
   const startPracticeDuel = () => {
@@ -78,7 +82,7 @@ export function Home() {
     <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans selection:bg-[#00FF00]/30 flex flex-col justify-between">
       {/* Top Navbar */}
       <nav className="h-14 border-b border-[#00FF00]/30 flex items-center justify-between px-6 bg-[#0a0a0a] shrink-0">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <AlgoArenaLogo size="sm" showTagline={false} />
           <ConnectionStatus />
           <SoundToggle />
@@ -86,12 +90,21 @@ export function Home() {
 
         <div className="flex items-center gap-3">
           <button 
+            onClick={() => setFriendsModalOpen(true)}
+            className="flex items-center gap-1.5 bg-[#080808] border border-[#00FF00]/40 hover:border-[#00FF00] px-3 py-1.5 cursor-pointer transition-all group font-mono text-xs font-bold uppercase text-zinc-300 hover:text-white"
+            title="Open Friend Squad & Social Network"
+          >
+            <Users className="w-3.5 h-3.5 text-[#00FF00] group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">FRIENDS</span>
+          </button>
+
+          <button 
             onClick={() => {
               setActiveFeedTab('spectate');
               const el = document.getElementById('rankings-feed');
               if (el) el.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="flex items-center gap-1.5 bg-[#080808] border border-[#00FF00]/40 hover:border-[#00FF00] px-3 py-1.5 cursor-pointer transition-all group font-mono text-xs font-bold uppercase text-zinc-300 hover:text-white"
+            className="flex items-center gap-1.5 bg-[#080808] border border-white/15 hover:border-[#00FF00] px-3 py-1.5 cursor-pointer transition-all group font-mono text-xs font-bold uppercase text-zinc-300 hover:text-white"
           >
             <Eye className="w-3.5 h-3.5 text-[#00FF00] group-hover:scale-110 transition-transform" />
             <span className="hidden sm:inline">SPECTATE LIVE</span>
@@ -254,6 +267,17 @@ export function Home() {
           />
         </motion.div>
 
+        {/* D3.js Real-Time Match-Making Availability Bar Chart */}
+        <motion.div
+          id="arena-matchmaking-availability-section"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.32 }}
+          className="w-full mt-6"
+        >
+          <MatchmakingAvailabilityChart onQuickMatch={handleQuickMatch} />
+        </motion.div>
+
         {/* Join 1v1 Match via Invite Code */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -312,6 +336,19 @@ export function Home() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3 mb-6 font-mono">
             <div className="flex flex-wrap items-center gap-2">
               <button
+                id="tab-availability-radar"
+                onClick={() => setActiveFeedTab('availability')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase transition-all cursor-pointer border ${
+                  activeFeedTab === 'availability'
+                    ? 'bg-[#00FF00] text-black border-[#00FF00] shadow-[0_0_12px_rgba(0,255,0,0.3)]'
+                    : 'bg-[#0c0c0c] text-zinc-400 border-white/10 hover:border-white/30 hover:text-white'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>MATCHMAKING RADAR</span>
+              </button>
+
+              <button
                 onClick={() => setActiveFeedTab('spectate')}
                 className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase transition-all cursor-pointer border ${
                   activeFeedTab === 'spectate'
@@ -367,7 +404,9 @@ export function Home() {
           </div>
 
           {/* Active View */}
-          {activeFeedTab === 'spectate' ? (
+          {activeFeedTab === 'availability' ? (
+            <MatchmakingAvailabilityChart onQuickMatch={handleQuickMatch} />
+          ) : activeFeedTab === 'spectate' ? (
             <LiveSpectateList 
               onQuickMatch={handleQuickMatch} 
               onPracticeWithBot={() => setShowPracticeModal(true)} 
@@ -529,10 +568,15 @@ export function Home() {
         )}
       </AnimatePresence>
 
+      {/* Create Private Room Modal */}
+      <CreatePrivateRoomModal
+        isOpen={showCreatePrivateModal}
+        onClose={() => setShowCreatePrivateModal(false)}
+      />
+
       {/* Telemetry Footer */}
       <footer className="h-10 bg-[#050505] border-t border-white/10 flex items-center px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
         <div className="flex gap-6">
-          <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-[#00FF00]" /> Region: US-EAST-1</span>
           <span className="hidden sm:inline">Latency: 22ms</span>
           <span className="hidden md:inline">Bot Engine: ALGOARENA-DSA-V2</span>
         </div>

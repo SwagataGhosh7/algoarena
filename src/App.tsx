@@ -12,6 +12,8 @@ import { AuthModal } from './components/AuthModal';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { DirectChallengeManager } from './components/DirectChallengeModal';
 import { FloatingLobbyChat } from './components/FloatingLobbyChat';
+import { FriendsModal } from './components/FriendsModal';
+import { UserProfileDetailsModal } from './components/UserProfileDetailsModal';
 import { useStore } from './store';
 
 function DirectChallengeHost() {
@@ -22,6 +24,19 @@ function DirectChallengeHost() {
       currentUsername={username}
       currentElo={1200}
     />
+  );
+}
+
+function GlobalModalsHost() {
+  const { inspectedUserForDetails, setInspectedUserForDetails } = useStore();
+  return (
+    <>
+      <FriendsModal />
+      <UserProfileDetailsModal
+        username={inspectedUserForDetails}
+        onClose={() => setInspectedUserForDetails(null)}
+      />
+    </>
   );
 }
 
@@ -39,6 +54,7 @@ export default function App() {
       <AuthModal />
       <ProfileSetupModal />
       <DirectChallengeHost />
+      <GlobalModalsHost />
       <FloatingLobbyChat />
     </BrowserRouter>
   );

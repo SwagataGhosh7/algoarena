@@ -1,15 +1,14 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, User, Users } from 'lucide-react';
 import { Leaderboard } from '../components/Leaderboard';
 import { ConnectionStatus } from '../components/ConnectionStatus';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { SoundToggle } from '../components/SoundToggle';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
 import { useStore } from '../store';
 
 export function LeaderboardPage() {
   const navigate = useNavigate();
-  const { currentUser } = useStore();
+  const { currentUser, setFriendsModalOpen } = useStore();
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans selection:bg-[#00FF00]/30 flex flex-col justify-between">
@@ -29,8 +28,15 @@ export function LeaderboardPage() {
 
         <div className="flex items-center gap-3 sm:gap-4">
           <ConnectionStatus />
-          <ThemeToggle />
           <SoundToggle />
+          <button 
+            onClick={() => setFriendsModalOpen(true)}
+            className="flex items-center gap-1.5 bg-[#080808] border border-[#00FF00]/40 hover:border-[#00FF00] px-3 py-1.5 cursor-pointer transition-all group font-mono text-xs font-bold uppercase text-zinc-300 hover:text-white"
+            title="Open Friend Squad & Social Network"
+          >
+            <Users className="w-3.5 h-3.5 text-[#00FF00] group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">FRIENDS</span>
+          </button>
           <button 
             onClick={() => navigate(`/profile/${currentUser.name.replace(' ', '')}`)}
             className="flex items-center gap-2 bg-[#080808] border border-[#00FF00]/30 px-3 py-1.5 cursor-pointer hover:border-[#00FF00] hover:bg-[#00FF00]/10 transition-all group"

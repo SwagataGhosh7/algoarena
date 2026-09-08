@@ -3721,7 +3721,6 @@ export function Arena() {
       {/* Telemetry Footer */}
       <footer className="h-8 bg-[#050505] border-t border-white/10 flex items-center px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
         <div className="flex gap-6">
-          <span>Region: US-EAST-1</span>
           <span className="hidden sm:inline">Latency: 24ms</span>
           <span className="hidden md:inline">Observers: 128</span>
         </div>

@@ -31,7 +31,6 @@ import { FriendActions } from '../components/FriendActions';
 import { CodeReview } from '../components/CodeReview';
 import { NeonPalettePicker } from '../components/NeonPalettePicker';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { SoundToggle } from '../components/SoundToggle';
 import { useNeonTheme, NEON_PALETTES } from '../lib/neonThemes';
 import { useStore } from '../store';
@@ -271,7 +270,6 @@ export function Profile() {
         </div>
 
         <div className="flex items-center gap-3">
-          <ThemeToggle />
           <SoundToggle />
           {isSelf && (
             <button

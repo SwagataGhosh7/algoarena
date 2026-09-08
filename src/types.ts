@@ -84,11 +84,24 @@ export interface LobbyChatMessage {
   userId: string;
   username: string;
   text: string;
+  imageUrl?: string;
   timestamp: number;
   elo?: number;
   avatar?: string;
   badge?: string;
   isSystem?: boolean;
+}
+
+export interface PrivateChatMessage {
+  id: string;
+  conversationId: string;
+  fromUsername: string;
+  toUsername: string;
+  text: string;
+  imageUrl?: string;
+  timestamp: number;
+  elo?: number;
+  avatar?: string;
 }
 
 export interface RunTestCaseResult {
@@ -378,4 +391,37 @@ export interface ActiveLobbyUser {
   status: 'online' | 'in-match' | 'in_match' | 'idle' | 'in_room';
   lastSeen: number;
   isBot?: boolean;
+}
+
+export type SkillBracketId = 'novice' | 'intermediate' | 'advanced' | 'elite';
+
+export interface DuelistInQueue {
+  username: string;
+  elo: number;
+  avatar?: string;
+  status: 'online' | 'in-match' | 'idle';
+  lookingForDuel: boolean;
+  queuedAt?: number;
+  isCurrentClient?: boolean;
+}
+
+export interface SkillBracketAvailability {
+  id: SkillBracketId;
+  name: string;
+  badge: string;
+  eloRange: string;
+  minElo: number;
+  maxElo: number;
+  count: number; // Count of online users currently looking for a duel
+  totalOnline: number; // Total duelists currently online in this bracket
+  avgWaitSeconds: number; // Estimated match queue wait time
+  accentColor: string;
+  duelists: DuelistInQueue[];
+}
+
+export interface MatchmakingAvailabilityData {
+  brackets: SkillBracketAvailability[];
+  totalLooking: number;
+  totalOnline: number;
+  timestamp: number;
 }

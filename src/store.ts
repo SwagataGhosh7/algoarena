@@ -24,6 +24,13 @@ interface AppState {
   isAuthModalOpen: boolean;
   isProfileSetupOpen: boolean;
   authLoading: boolean;
+  activeLobbyCount: number;
+  lobbySoundEnabled: boolean;
+  chatDraftText: string;
+  isFriendsModalOpen: boolean;
+  isLobbyChatOpen: boolean;
+  activePrivateChatUser: string | null;
+  inspectedUserForDetails: string | null;
   
   setCurrentUser: (name: string) => void;
   setPendingRoomId: (roomId: string | null) => void;
@@ -31,12 +38,23 @@ interface AppState {
   setAuthModalOpen: (open: boolean) => void;
   setProfileSetupOpen: (open: boolean) => void;
   setAuthLoading: (loading: boolean) => void;
+  setActiveLobbyCount: (count: number) => void;
+  setLobbySoundEnabled: (enabled: boolean) => void;
+  setChatDraftText: (draft: string) => void;
+  setFriendsModalOpen: (open: boolean) => void;
+  setLobbyChatOpen: (open: boolean) => void;
+  setActivePrivateChatUser: (user: string | null) => void;
+  openPrivateChatWithUser: (username: string) => void;
+  setInspectedUserForDetails: (username: string | null) => void;
   saveProfileAndSync: (data: Partial<UserAccountProfile>) => Promise<void>;
   logout: () => void;
 }
 
 const STORAGE_PROFILE_KEY = 'algoarena_account_profile';
 const STORAGE_PENDING_ROOM_KEY = 'algoarena_pending_room';
+const STORAGE_LOBBY_COUNT_KEY = 'algoarena_lobby_active_count';
+const STORAGE_LOBBY_SOUND_KEY = 'algoarena_lobby_sound_enabled';
+const STORAGE_CHAT_DRAFT_KEY = 'algoarena_lobby_chat_draft';
 
 const loadStoredProfile = (): UserAccountProfile | null => {
   try {
@@ -48,6 +66,34 @@ const loadStoredProfile = (): UserAccountProfile | null => {
     console.error('Failed to parse account profile from storage', e);
   }
   return null;
+};
+
+const loadStoredLobbyCount = (): number => {
+  try {
+    const raw = localStorage.getItem(STORAGE_LOBBY_COUNT_KEY);
+    if (raw) {
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed >= 1) return parsed;
+    }
+  } catch {}
+  return 1;
+};
+
+const loadStoredLobbySound = (): boolean => {
+  try {
+    const raw = localStorage.getItem(STORAGE_LOBBY_SOUND_KEY);
+    if (raw !== null) {
+      return raw === 'true';
+    }
+  } catch {}
+  return true;
+};
+
+const loadStoredChatDraft = (): string => {
+  try {
+    return localStorage.getItem(STORAGE_CHAT_DRAFT_KEY) || '';
+  } catch {}
+  return '';
 };
 
 const getStoredUser = () => {
@@ -105,6 +151,49 @@ export const useStore = create<AppState>((set, get) => ({
   isAuthModalOpen: false,
   isProfileSetupOpen: false,
   authLoading: true,
+  activeLobbyCount: loadStoredLobbyCount(),
+  lobbySoundEnabled: loadStoredLobbySound(),
+  chatDraftText: loadStoredChatDraft(),
+  isFriendsModalOpen: false,
+  isLobbyChatOpen: false,
+  activePrivateChatUser: null,
+  inspectedUserForDetails: null,
+
+  setFriendsModalOpen: (open: boolean) => set({ isFriendsModalOpen: open }),
+  setLobbyChatOpen: (open: boolean) => set({ isLobbyChatOpen: open }),
+  setActivePrivateChatUser: (user: string | null) => set({ activePrivateChatUser: user }),
+  openPrivateChatWithUser: (username: string) => {
+    set({ 
+      activePrivateChatUser: username,
+      isLobbyChatOpen: true 
+    });
+  },
+  setInspectedUserForDetails: (username: string | null) => set({ inspectedUserForDetails: username }),
+
+  setActiveLobbyCount: (count: number) => {
+    try {
+      localStorage.setItem(STORAGE_LOBBY_COUNT_KEY, String(count));
+    } catch {}
+    set({ activeLobbyCount: count });
+  },
+
+  setLobbySoundEnabled: (enabled: boolean) => {
+    try {
+      localStorage.setItem(STORAGE_LOBBY_SOUND_KEY, String(enabled));
+    } catch {}
+    set({ lobbySoundEnabled: enabled });
+  },
+
+  setChatDraftText: (draft: string) => {
+    try {
+      if (draft) {
+        localStorage.setItem(STORAGE_CHAT_DRAFT_KEY, draft);
+      } else {
+        localStorage.removeItem(STORAGE_CHAT_DRAFT_KEY);
+      }
+    } catch {}
+    set({ chatDraftText: draft });
+  },
 
   setPendingRoomId: (roomId: string | null) => {
     try {

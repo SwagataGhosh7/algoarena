@@ -26,6 +26,7 @@ import { LeaderboardUser, LeaderboardResponse } from '../types';
 import { apiUrl } from '../api';
 import { OnlineStatusIndicator } from './OnlineStatusIndicator';
 import { triggerDirectChallenge } from './DirectChallengeModal';
+import { FriendActions } from './FriendActions';
 
 interface LeaderboardProps {
   embedded?: boolean;
@@ -258,41 +259,47 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       )}
 
       {/* Top 3 Podium Cards */}
-      {selectedBracket === 'all' && !searchQuery.trim() && topThree.length === 3 && (
+      {selectedBracket === 'all' && !searchQuery.trim() && topThree.length > 0 && (
         <div className="mb-10">
           <div className="flex items-center gap-2 font-mono text-xs uppercase font-bold text-zinc-400 mb-4 tracking-wider">
             <Crown className="w-4 h-4 text-amber-400" />
-            <span>TOP 3 ELO PLAYERS</span>
+            <span>TOP {topThree.length === 1 ? 'ELO PLAYER' : `${Math.min(3, topThree.length)} ELO PLAYERS`}</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className={`grid grid-cols-1 ${topThree.length === 1 ? 'max-w-md mx-auto' : topThree.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4 items-end`}>
             {/* Rank 2 (Left) */}
-            <PodiumCard
-              user={topThree[1]}
-              rank={2}
-              badgeColor="border-slate-300/40 bg-slate-400/10 text-slate-200"
-              medalIcon={<Medal className="w-4 h-4 text-slate-300" />}
-              onNavigate={() => navigate(`/profile/${topThree[1].username}`)}
-            />
+            {topThree[1] && (
+              <PodiumCard
+                user={topThree[1]}
+                rank={2}
+                badgeColor="border-slate-300/40 bg-slate-400/10 text-slate-200"
+                medalIcon={<Medal className="w-4 h-4 text-slate-300" />}
+                onNavigate={() => navigate(`/profile/${topThree[1].username}`)}
+              />
+            )}
 
             {/* Rank 1 (Center - Elevated) */}
-            <PodiumCard
-              user={topThree[0]}
-              rank={1}
-              isLeader
-              badgeColor="border-amber-400/60 bg-amber-400/15 text-amber-300"
-              medalIcon={<Crown className="w-5 h-5 text-amber-400" />}
-              onNavigate={() => navigate(`/profile/${topThree[0].username}`)}
-            />
+            {topThree[0] && (
+              <PodiumCard
+                user={topThree[0]}
+                rank={1}
+                isLeader
+                badgeColor="border-amber-400/60 bg-amber-400/15 text-amber-300"
+                medalIcon={<Crown className="w-5 h-5 text-amber-400" />}
+                onNavigate={() => navigate(`/profile/${topThree[0].username}`)}
+              />
+            )}
 
             {/* Rank 3 (Right) */}
-            <PodiumCard
-              user={topThree[2]}
-              rank={3}
-              badgeColor="border-amber-700/40 bg-amber-700/10 text-amber-400"
-              medalIcon={<Medal className="w-4 h-4 text-amber-600" />}
-              onNavigate={() => navigate(`/profile/${topThree[2].username}`)}
-            />
+            {topThree[2] && (
+              <PodiumCard
+                user={topThree[2]}
+                rank={3}
+                badgeColor="border-amber-700/40 bg-amber-700/10 text-amber-400"
+                medalIcon={<Medal className="w-4 h-4 text-amber-600" />}
+                onNavigate={() => navigate(`/profile/${topThree[2].username}`)}
+              />
+            )}
           </div>
         </div>
       )}
@@ -317,17 +324,10 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden md:flex flex-col text-right text-xs">
+            <div className="flex flex-col text-right text-xs">
               <span className="text-zinc-500 text-[10px] uppercase font-bold">Accuracy</span>
               <span className="text-white font-bold">{currentUserEntry.testAccuracy}%</span>
             </div>
-            <button
-              onClick={() => navigate(`/profile/${currentUserEntry.username}`)}
-              className="px-3.5 py-1.5 bg-[#00FF00] hover:bg-[#00DD00] text-black font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_0_12px_rgba(0,255,0,0.3)]"
-            >
-              <span>VIEW DOSSIER</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       )}
@@ -396,7 +396,7 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
               <th className="py-3 px-4 text-center">STREAK</th>
               <th className="py-3 px-4 text-right">ACCURACY</th>
               <th className="py-3 px-4 text-center">CORE LANG</th>
-              <th className="py-3 px-4 text-right">DOSSIER</th>
+              <th className="py-3 px-4 text-right">ACTIONS</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -540,27 +540,28 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
                       </span>
                     </td>
 
-                    {/* Actions: Challenge & Dossier Link */}
+                    {/* Actions: Friend Request & Challenge */}
                     <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {!isCurrent && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              triggerDirectChallenge(user.username, undefined, user.elo);
-                            }}
-                            className="px-2 py-0.5 bg-[#00FF00]/10 hover:bg-[#00FF00] border border-[#00FF00]/40 text-[#00FF00] hover:text-black font-black uppercase text-[9px] tracking-wider transition-all cursor-pointer inline-flex items-center gap-1"
-                            title={`Send direct duel challenge to ${user.username}`}
-                          >
-                            <Swords className="w-2.5 h-2.5" />
-                            <span>CHALLENGE</span>
-                          </button>
+                      <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                        {!isCurrent ? (
+                          <>
+                            <FriendActions username={user.username} showProfileLink={false} />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                triggerDirectChallenge(user.username, undefined, user.elo);
+                              }}
+                              className="px-2 py-0.5 bg-[#00FF00]/10 hover:bg-[#00FF00] border border-[#00FF00]/40 text-[#00FF00] hover:text-black font-black uppercase text-[9px] tracking-wider transition-all cursor-pointer inline-flex items-center gap-1"
+                              title={`Send direct duel challenge to ${user.username}`}
+                            >
+                              <Swords className="w-2.5 h-2.5" />
+                              <span>CHALLENGE</span>
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider">YOU</span>
                         )}
-                        <span className="text-zinc-600 group-hover:text-[#00FF00] inline-flex items-center gap-1 text-[11px] font-bold uppercase transition-colors">
-                          <span>DOSSIER</span>
-                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                        </span>
                       </div>
                     </td>
                   </tr>
@@ -575,9 +576,6 @@ export function Leaderboard({ embedded = false, onClose }: LeaderboardProps) {
       <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-zinc-500 font-mono text-[11px] border-t border-white/10 pt-4">
         <div className="flex items-center gap-4">
           <span>RATING BRACKETS: ELITE &ge; 2000 ELO &bull; ADVANCED &ge; 1600 ELO &bull; INTERMEDIATE &ge; 1200 ELO</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span>SEASON ENDS: <strong className="text-white">{meta?.seasonEndsIn || '14 DAYS'}</strong></span>
         </div>
       </div>
     </div>

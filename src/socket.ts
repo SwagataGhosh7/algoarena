@@ -10,3 +10,6 @@ export const socket = io(backendUrl || undefined, {
   timeout: 10000,
 });
 
+export const getSocket = () => socket;
+
+
