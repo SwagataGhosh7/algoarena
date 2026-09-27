@@ -20,6 +20,8 @@ import { ConnectionStatus, useConnectionStatus } from '../components/ConnectionS
 import { useNeonTheme } from '../lib/neonThemes';
 import { getStoredTheme, saveStoredTheme, registerMonacoThemes } from '../lib/editorThemes';
 import { SoundToggle } from '../components/SoundToggle';
+import { BgmPlayer } from '../components/BgmPlayer';
+import { AudioManager } from '../components/AudioManager';
 import { soundManager } from '../lib/soundEffects';
 import { SolutionDiffViewer } from '../components/SolutionDiffViewer';
 import { ExpectedSolutionsViewer } from '../components/ExpectedSolutionsViewer';
@@ -1409,8 +1411,9 @@ export function Arena() {
             onClick={() => setIsShareModalOpen(true)} 
           />
 
-          {/* Audio Feedback Toggle */}
+          {/* Audio Feedback Toggle & Synth BGM Radio */}
           <SoundToggle />
+          <BgmPlayer />
 
           {/* Visual Duel Countdown Timer with Dynamic Urgency & Circular Progress Ring */}
           <CountdownTimer
@@ -3718,13 +3721,17 @@ export function Arena() {
         onForfeit={forfeitMatch}
       />
 
-      {/* Telemetry Footer */}
-      <footer className="h-8 bg-[#050505] border-t border-white/10 flex items-center px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
-        <div className="flex gap-6">
+      {/* Telemetry Footer with Atmospheric Audio Controls */}
+      <footer className="h-9 bg-[#050505] border-t border-white/10 flex items-center px-4 sm:px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
+        <div className="flex items-center gap-4 sm:gap-6">
           <span className="hidden sm:inline">Latency: 24ms</span>
           <span className="hidden md:inline">Observers: 128</span>
         </div>
-        <div>
+
+        {/* Atmospheric Background Music Controls in Footer */}
+        <AudioManager mode="footer" />
+
+        <div className="hidden sm:block">
           ALGOARENA PROTOCOL
         </div>
       </footer>

@@ -14,13 +14,13 @@ import {
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBARh-xubFf6gphvzkEdN0NafbBWWFATVA",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "algoarena-56cf3.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "algoarena-56cf3",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "algoarena-56cf3.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "947638160148",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:947638160148:web:416c13f5c5b16715f8d001",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-997HESYB6M"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAyXtH6siATqvJbPD_ECr__WqZiZBHTPMs",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "algoarena-a1d34.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "algoarena-a1d34",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "algoarena-a1d34.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "441078263666",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:441078263666:web:96a9742d27d9b55a03b7eb",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-YDXFCV1Z4M"
 };
 
 // Initialize Firebase

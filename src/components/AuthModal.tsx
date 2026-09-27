@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   X, 
@@ -10,7 +10,12 @@ import {
   Terminal,
   LogIn,
   UserPlus,
-  Zap
+  Zap,
+  Copy,
+  Check,
+  ExternalLink,
+  UserCheck,
+  Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -22,6 +27,7 @@ import {
   updateProfile
 } from '../lib/firebase';
 import { useStore } from '../store';
+import { v4 as uuidv4 } from 'uuid';
 
 export function AuthModal() {
   const { 
@@ -39,11 +45,68 @@ export function AuthModal() {
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  useEffect(() => {
+    if (isAuthModalOpen) {
+      setError(null);
+      setIsUnauthorizedDomain(false);
+      setCopiedDomain(false);
+    }
+  }, [isAuthModalOpen]);
 
   if (!isAuthModalOpen) return null;
 
+  const handleCopyDomain = async () => {
+    try {
+      await navigator.clipboard.writeText(currentHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
+    } catch {
+      // Fallback
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
+    }
+  };
+
+  const handleInstantDemoProfile = () => {
+    const existing = accountProfile;
+    const uid = existing?.uid || `user_${uuidv4().slice(0, 8)}`;
+    setAccountProfile({
+      uid,
+      name: 'Swagata Ghosh',
+      username: 'swagataghosh',
+      email: 'swagataghosh538@gmail.com',
+      nationality: 'India',
+      region: 'Asia',
+      photoURL: existing?.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&h=120&q=80',
+      isSetupComplete: true,
+    });
+    setAuthModalOpen(false);
+  };
+
+  const handleInstantGuestDuelist = () => {
+    const randomCallsign = `duelist_${Math.floor(1000 + Math.random() * 9000)}`;
+    const uid = `guest_${uuidv4().slice(0, 8)}`;
+    setAccountProfile({
+      uid,
+      name: randomCallsign,
+      username: randomCallsign,
+      email: `${randomCallsign}@algoarena.local`,
+      nationality: 'United States',
+      region: 'North America',
+      photoURL: '',
+      isSetupComplete: false,
+    });
+    setAuthModalOpen(false);
+    setProfileSetupOpen(true);
+  };
+
   const handleGoogleSignIn = async () => {
     setError(null);
+    setIsUnauthorizedDomain(false);
     setLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -71,12 +134,17 @@ export function AuthModal() {
         setProfileSetupOpen(true);
       }
     } catch (err: any) {
-      console.error('Google Sign In error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
+      const isUnauthDomain = err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain');
+      if (isUnauthDomain) {
+        setIsUnauthorizedDomain(true);
+        setError('Firebase domain restriction: This preview domain has not yet been whitelisted in Firebase Console.');
+        console.warn('[Firebase Auth] Domain not yet whitelisted in Firebase Console:', window.location.hostname);
+      } else if (err.code === 'auth/popup-closed-by-user') {
         setError('Google sign-in popup was cancelled.');
       } else if (err.code === 'auth/popup-blocked') {
         setError('Popup was blocked by browser. Please allow popups or use email sign-in.');
       } else {
+        console.warn('[Firebase Auth] Sign in exception:', err?.message || err);
         setError(err.message || 'Failed to authenticate via Google.');
       }
     } finally {
@@ -87,6 +155,7 @@ export function AuthModal() {
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsUnauthorizedDomain(false);
 
     if (!email || !password) {
       setError('Please provide email and password.');
@@ -148,8 +217,10 @@ export function AuthModal() {
         }
       }
     } catch (err: any) {
-      console.error('Email Auth error:', err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+      console.warn('[Firebase Auth] Email Auth notice:', err?.code || err?.message);
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('Email/Password provider is disabled in Firebase. Use Instant Guest Duelist or enable it in Firebase Console.');
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
         setError('Invalid email or password credential.');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('This email address is already registered. Please sign in instead.');
@@ -206,17 +277,100 @@ export function AuthModal() {
                 MATCH CODE INVITE: ROOM #{pendingRoomId}
               </div>
               <div className="text-[10px] text-zinc-300 font-mono">
-                Authenticate with Google or Email to verify credentials for this 1v1 duel.
+                Authenticate with Google, Email, or Guest mode for this 1v1 duel.
               </div>
             </div>
           </div>
         )}
 
-        <div className="p-6 space-y-5">
-          {error && (
+        <div className="p-6 space-y-4">
+          {/* General Error Banner */}
+          {error && !isUnauthorizedDomain && (
             <div className="p-3 bg-red-950/40 border border-red-500/50 text-red-300 text-xs flex items-start gap-2 font-mono">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* Dedicated Firebase Unauthorized Domain Card */}
+          {isUnauthorizedDomain && (
+            <div className="p-3.5 bg-gradient-to-b from-amber-950/60 to-black/80 border border-amber-500/60 text-zinc-200 text-xs font-mono space-y-3">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-amber-300 uppercase tracking-wider text-[11px]">
+                    Firebase Domain Authorization Required
+                  </div>
+                  <p className="text-[11px] text-zinc-300 mt-1 leading-relaxed">
+                    Google OAuth blocked the sign-in popup because this cloud preview host is not in the Firebase Console authorized domains list for project <code className="text-[#00FF00] font-bold">algoarena-a1d34</code>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Domain Copy Box */}
+              <div className="bg-black/90 p-2.5 border border-white/10 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Globe className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-[11px] text-amber-200 font-mono truncate select-all">
+                    {currentHostname}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyDomain}
+                  className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
+                >
+                  {copiedDomain ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      <span className="text-emerald-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>Copy Hostname</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Step instructions */}
+              <div className="text-[10px] text-zinc-400 space-y-1 bg-black/60 p-2.5 border border-white/5">
+                <div className="font-bold text-zinc-300 uppercase flex items-center justify-between">
+                  <span>To whitelist permanently in Firebase:</span>
+                  <a 
+                    href="https://console.firebase.google.com/project/algoarena-a1d34/authentication/settings" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
+                  >
+                    Console <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
+                <div className="text-zinc-400">1. Open Firebase Console → Authentication → Settings → Authorized domains.</div>
+                <div className="text-zinc-400">2. Click "Add domain" and paste the copied hostname above.</div>
+              </div>
+
+              {/* Instant Play Bypass */}
+              <div className="pt-1 flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={handleInstantDemoProfile}
+                  className="flex-1 py-2 px-3 bg-[#00FF00] hover:bg-[#00dd00] text-black font-black uppercase text-[10px] tracking-wider font-mono flex items-center justify-center gap-1.5 transition-all shadow-[0_0_12px_rgba(0,255,0,0.2)] cursor-pointer"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Instant Play as Swagata Ghosh</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleInstantGuestDuelist}
+                  className="py-2 px-3 bg-zinc-800 hover:bg-zinc-700 text-white border border-white/20 font-bold uppercase text-[10px] tracking-wider font-mono flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Guest Clearance</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -225,7 +379,7 @@ export function AuthModal() {
             type="button"
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full py-3 px-4 bg-white text-zinc-950 hover:bg-zinc-200 transition-all font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-3 border border-white disabled:opacity-50"
+            className="w-full py-3 px-4 bg-white text-zinc-950 hover:bg-zinc-200 transition-all font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-3 border border-white disabled:opacity-50 cursor-pointer"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -248,7 +402,7 @@ export function AuthModal() {
             <span>Continue with Google</span>
           </button>
 
-          <div className="relative flex items-center justify-center my-4">
+          <div className="relative flex items-center justify-center my-3">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/10" />
             </div>
@@ -336,7 +490,7 @@ export function AuthModal() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-[#00FF00] text-black font-black font-mono text-xs uppercase tracking-widest hover:bg-[#00dd00] transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full py-3 bg-[#00FF00] text-black font-black font-mono text-xs uppercase tracking-widest hover:bg-[#00dd00] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -355,6 +509,19 @@ export function AuthModal() {
                 </>
               )}
             </button>
+
+            {/* Quick Guest Duelist Access */}
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between text-zinc-400 text-[11px] font-mono">
+              <span className="text-zinc-500">Skip cloud sync?</span>
+              <button
+                type="button"
+                onClick={handleInstantGuestDuelist}
+                className="text-[#00FF00] hover:text-[#00dd00] hover:underline font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Instant Guest Play</span>
+              </button>
+            </div>
           </form>
         </div>
 

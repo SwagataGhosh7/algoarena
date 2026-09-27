@@ -3,6 +3,8 @@ import { ArrowLeft, User, Users } from 'lucide-react';
 import { Leaderboard } from '../components/Leaderboard';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SoundToggle } from '../components/SoundToggle';
+import { BgmPlayer } from '../components/BgmPlayer';
+import { AudioManager } from '../components/AudioManager';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
 import { useStore } from '../store';
 
@@ -29,6 +31,7 @@ export function LeaderboardPage() {
         <div className="flex items-center gap-3 sm:gap-4">
           <ConnectionStatus />
           <SoundToggle />
+          <BgmPlayer />
           <button 
             onClick={() => setFriendsModalOpen(true)}
             className="flex items-center gap-1.5 bg-[#080808] border border-[#00FF00]/40 hover:border-[#00FF00] px-3 py-1.5 cursor-pointer transition-all group font-mono text-xs font-bold uppercase text-zinc-300 hover:text-white"
@@ -54,13 +57,17 @@ export function LeaderboardPage() {
         <Leaderboard />
       </main>
 
-      {/* Footer */}
-      <footer className="h-12 border-t border-white/10 flex items-center justify-between px-6 bg-[#0a0a0a] text-zinc-500 font-mono text-[10px] uppercase shrink-0">
+      {/* Footer with Atmospheric Audio Controls */}
+      <footer className="h-12 border-t border-white/10 flex items-center justify-between px-4 sm:px-6 bg-[#0a0a0a] text-zinc-500 font-mono text-[10px] uppercase shrink-0">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-[#00FF00] rounded-none animate-pulse"></span>
-          <span>ALGOARENA GLOBAL RANKED STANDINGS</span>
+          <span className="hidden sm:inline">ALGOARENA GLOBAL RANKED STANDINGS</span>
         </div>
-        <div>
+
+        {/* Atmospheric Background Music Controls */}
+        <AudioManager mode="footer" />
+
+        <div className="hidden sm:block">
           <span>LIVE TELEMETRY ACTIVE</span>
         </div>
       </footer>

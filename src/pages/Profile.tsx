@@ -32,6 +32,8 @@ import { CodeReview } from '../components/CodeReview';
 import { NeonPalettePicker } from '../components/NeonPalettePicker';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
 import { SoundToggle } from '../components/SoundToggle';
+import { BgmPlayer } from '../components/BgmPlayer';
+import { AudioManager } from '../components/AudioManager';
 import { useNeonTheme, NEON_PALETTES } from '../lib/neonThemes';
 import { useStore } from '../store';
 import { UserProfileData, MatchRecord, CompetencyTopic } from '../types';
@@ -271,6 +273,7 @@ export function Profile() {
 
         <div className="flex items-center gap-3">
           <SoundToggle />
+          <BgmPlayer />
           {isSelf && (
             <button
               onClick={() => setProfileSetupOpen(true)}
@@ -668,15 +671,18 @@ export function Profile() {
         </section>
       </div>
 
-      {/* Telemetry Footer */}
-      <footer className="h-10 bg-[#050505] border-t border-white/10 flex items-center px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
-        <div className="flex gap-6">
-          <span>Model: GEMINI-2.5-FLASH</span>
-          <span className="hidden sm:inline">Telemetry: AUTHENTIC LIVE PERSISTENCE</span>
+      {/* Telemetry Footer with Atmospheric Audio Controls */}
+      <footer className="h-10 bg-[#050505] border-t border-white/10 flex items-center px-4 sm:px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
+        <div className="flex items-center gap-4 sm:gap-6">
+          <span className="hidden sm:inline">Telemetry: LIVE PERSISTENCE</span>
           <span className="hidden md:inline">Profile Sync: 100% ONLINE</span>
         </div>
-        <div>
-          PROVISIONED BY GEMINI-ARENA-CORE // PROTOCOL V2.4
+
+        {/* Atmospheric Audio Controls */}
+        <AudioManager mode="footer" />
+
+        <div className="hidden sm:block">
+          ALGOARENA CORE PROTOCOL
         </div>
       </footer>
     </div>

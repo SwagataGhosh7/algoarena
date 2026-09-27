@@ -30,6 +30,8 @@ import { LobbyOperatorsList } from '../components/LobbyOperatorsList';
 import { LiveSpectateList } from '../components/LiveSpectateList';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SoundToggle } from '../components/SoundToggle';
+import { BgmPlayer } from '../components/BgmPlayer';
+import { AudioManager } from '../components/AudioManager';
 import { AlgoArenaLogo } from '../components/AlgoArenaLogo';
 import { CreatePrivateRoomModal } from '../components/CreatePrivateRoomModal';
 import { MatchmakingAvailabilityChart } from '../components/MatchmakingAvailabilityChart';
@@ -86,6 +88,7 @@ export function Home() {
           <AlgoArenaLogo size="sm" showTagline={false} />
           <ConnectionStatus />
           <SoundToggle />
+          <BgmPlayer />
         </div>
 
         <div className="flex items-center gap-3">
@@ -574,13 +577,17 @@ export function Home() {
         onClose={() => setShowCreatePrivateModal(false)}
       />
 
-      {/* Telemetry Footer */}
-      <footer className="h-10 bg-[#050505] border-t border-white/10 flex items-center px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
-        <div className="flex gap-6">
+      {/* Telemetry Footer with Atmospheric Audio Controls */}
+      <footer className="h-10 bg-[#050505] border-t border-white/10 flex items-center px-4 sm:px-6 text-[10px] font-bold text-zinc-600 justify-between uppercase tracking-widest font-mono shrink-0">
+        <div className="flex items-center gap-4 sm:gap-6">
           <span className="hidden sm:inline">Latency: 22ms</span>
           <span className="hidden md:inline">Bot Engine: ALGOARENA-DSA-V2</span>
         </div>
-        <div>
+
+        {/* Atmospheric Audio Controls in Footer */}
+        <AudioManager mode="footer" />
+
+        <div className="hidden sm:block">
           ALGOARENA
         </div>
       </footer>
